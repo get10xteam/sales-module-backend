@@ -1,6 +1,7 @@
 package httpServer
 
 import (
+	"github.com/get10xteam/sales-module-backend/app/opportunity"
 	"github.com/get10xteam/sales-module-backend/app/user"
 	"github.com/get10xteam/sales-module-backend/plumbings/oauth"
 	"github.com/get10xteam/sales-module-backend/plumbings/storage"
@@ -55,5 +56,9 @@ func apiRoutes(apiRouter fiber.Router) {
 	users := apiRouter.Group("users")
 	{ // user
 		users.Get("dropdown", user.MustAuthMiddleware, user.UserDropdownHandler) // tested
+	}
+	opportunities := apiRouter.Group("opportunities")
+	{ // user
+		opportunities.Post("", user.MustAuthMiddleware, opportunity.CreateOpportunity) // tested
 	}
 }

@@ -2,11 +2,17 @@ package opportunity
 
 import (
 	"context"
+	"errors"
+	"fmt"
+	"sync"
 	"time"
 
+	"github.com/get10xteam/sales-module-backend/app/client"
+	"github.com/get10xteam/sales-module-backend/app/user"
 	"github.com/get10xteam/sales-module-backend/errs"
 	"github.com/get10xteam/sales-module-backend/plumbings/config"
 	"github.com/get10xteam/sales-module-backend/plumbings/utils"
+	"github.com/jackc/pgx/v5"
 
 	"github.com/gofiber/fiber/v2"
 )
@@ -45,7 +51,7 @@ func (u *Opportunity) CreateToDB(ctx context.Context) (err error) {
 	return
 }
 
-type CreateOpportunitiesPayload struct {
+type CreateOpportunityPayload struct {
 	OwnerId         config.ObfuscatedInt `json:"owner_id,omitempty"`    // check users
 	AssigneeId      config.ObfuscatedInt `json:"assignee_id,omitempty"` // check users
 	ClientId        config.ObfuscatedInt `json:"client_id,omitempty"`   // check clients
@@ -57,11 +63,68 @@ type CreateOpportunitiesPayload struct {
 	Revenue         int                  `json:"revenue,omitempty"`
 }
 
-func CreateOpportunities(c *fiber.Ctx) error {
-	opportunityReq := CreateOpportunitiesPayload{}
+func (cop *CreateOpportunityPayload) Validate(ctx context.Context) *errs.Error {
+
+	type fieldUsers struct {
+		id   config.ObfuscatedInt
+		name string
+		err  error
+	}
+
+	// check if cop.OwnerId and cop.AssigneeId is valid or not
+	var err error
+	var wg sync.WaitGroup
+	errsUserID := make(chan fieldUsers, 2)
+
+	for _, field := range []fieldUsers{{id: cop.OwnerId, name: "owner_id"}, {id: cop.AssigneeId, name: "assignee_id"}} {
+		wg.Add(1)
+		go func(field fieldUsers) {
+			defer wg.Done()
+			_, err = user.UserById(ctx, field.id)
+			if err != nil {
+				field.err = err
+				errsUserID <- field
+			}
+		}(field)
+	}
+
+	wg.Wait()
+	close(errsUserID)
+
+	errUserDetail, errWhenGetUser := <-errsUserID
+	if errWhenGetUser {
+		if errors.Is(errUserDetail.err, pgx.ErrNoRows) {
+			return errs.ErrNotExist().WithMessage(fmt.Sprintf("cannot find %s", errUserDetail.name))
+		}
+
+		return errs.ErrServerError().WithDetail(err)
+	}
+
+	_, err = client.ClientById(ctx, cop.ClientId)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return errs.ErrNotExist().WithMessage("cannot find client_id")
+		}
+
+		return errs.ErrServerError().WithDetail(err)
+	}
+
+	return nil
+}
+
+// for testing purposes
+// INSERT INTO clients (id, "name", logo_url) VALUES(1, 'client test', NULL);
+
+func CreateOpportunity(c *fiber.Ctx) error {
+	opportunityReq := CreateOpportunityPayload{}
 	err := c.BodyParser(&opportunityReq)
 	if err != nil {
 		return errs.ErrBadParameter().WithMessage("Body not valid").WithFiberStatus(c)
+	}
+
+	ctx := c.Context()
+	if err := opportunityReq.Validate(ctx); err != nil {
+		return err.WithFiberStatus(c)
 	}
 
 	return utils.FiberJSONWrap(c, opportunityReq)
