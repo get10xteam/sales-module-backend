@@ -20,8 +20,7 @@ func apiRoutes(apiRouter fiber.Router) {
 		authRoute.Post("login", user.UserLoginHandler) // tested
 
 		// get profile
-		authRoute.Get("profile", user.MustAuthMiddleware, user.UserProfileHandler)   // tested
-		authRoute.Get("dropdown", user.MustAuthMiddleware, user.UserDropdownHandler) // tested
+		authRoute.Get("profile", user.MustAuthMiddleware, user.UserProfileHandler) // tested
 
 		// edit profile
 		authRoute.Put("profile",
@@ -52,5 +51,9 @@ func apiRoutes(apiRouter fiber.Router) {
 
 		// oath logout
 		authRoute.Get("logout", user.UserLogoutHandler) // tested
+	}
+	users := apiRouter.Group("users")
+	{ // user
+		users.Get("dropdown", user.MustAuthMiddleware, user.UserDropdownHandler) // tested
 	}
 }
