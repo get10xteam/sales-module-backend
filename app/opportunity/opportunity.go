@@ -14,6 +14,7 @@ import (
 	"github.com/get10xteam/sales-module-backend/plumbings/config"
 	"github.com/get10xteam/sales-module-backend/plumbings/utils"
 	"github.com/jackc/pgx/v5"
+	"gitlab.com/intalko/gosuite/pgdb"
 
 	"github.com/gofiber/fiber/v2"
 )
@@ -48,8 +49,25 @@ type Opportunity struct {
 	CreateTs                        time.Time            `json:"createTs" db:"create_ts"`
 }
 
-func (u *Opportunity) CreateToDB(ctx context.Context) (err error) {
-	return
+func (u *Opportunity) CreateToDB(ctx context.Context) error {
+	insertMap := map[string]any{
+		"owner_id":          u.OwnerId,
+		"assignee_id":       u.AssigneeId,
+		"client_id":         u.ClientId,
+		"status_code":       u.StatusCode,
+		"name":              u.Name,
+		"description":       u.Description,
+		"talent_budget":     u.TalentBudget,
+		"non_talent_budget": u.NonTalentBudget,
+		"revenue":           u.Revenue,
+	}
+
+	r, err := pgdb.QbQueryRow(ctx, pgdb.Qb.Insert("opportunities").SetMap(insertMap).Suffix("returning id"))
+	if err != nil {
+		return err
+	}
+
+	return r.Scan(&u.Id)
 }
 
 type CreateOpportunityPayload struct {
@@ -57,7 +75,7 @@ type CreateOpportunityPayload struct {
 	AssigneeId      config.ObfuscatedInt `json:"assignee_id,omitempty"` // check users
 	ClientId        config.ObfuscatedInt `json:"client_id,omitempty"`   // check clients
 	StatusCode      string               `json:"status_code,omitempty"` // check statuses
-	Name            string               `json:"name,omitempty"`
+	Name            string               `json:"name"`
 	Description     *string              `json:"description,omitempty"`
 	TalentBudget    int                  `json:"talent_budget,omitempty"`
 	NonTalentBudget int                  `json:"non_talent_budget,omitempty"`
@@ -65,6 +83,22 @@ type CreateOpportunityPayload struct {
 }
 
 func (cop *CreateOpportunityPayload) Validate(ctx context.Context) *errs.Error {
+
+	if cop.Name == "" {
+		return errs.ErrBadParameter().WithMessage("name cannot be empty")
+	}
+
+	if cop.TalentBudget < 1 {
+		return errs.ErrBadParameter().WithMessage("talent_budget must be larger than 0")
+	}
+
+	if cop.NonTalentBudget < 1 {
+		return errs.ErrBadParameter().WithMessage("non_talent_budget must be larger than 0")
+	}
+
+	if cop.Revenue < 1 {
+		return errs.ErrBadParameter().WithMessage("revenue must be larger than 0")
+	}
 
 	type fieldUsers struct {
 		id   config.ObfuscatedInt
@@ -138,5 +172,24 @@ func CreateOpportunity(c *fiber.Ctx) error {
 		return err.WithFiberStatus(c)
 	}
 
-	return utils.FiberJSONWrap(c, opportunityReq)
+	opportunity := Opportunity{
+		OwnerId:         opportunityReq.OwnerId,
+		AssigneeId:      opportunityReq.AssigneeId,
+		ClientId:        opportunityReq.ClientId,
+		StatusCode:      opportunityReq.StatusCode,
+		Name:            opportunityReq.Name,
+		Description:     opportunityReq.Description,
+		TalentBudget:    opportunityReq.TalentBudget,
+		NonTalentBudget: opportunityReq.NonTalentBudget,
+		Revenue:         opportunityReq.Revenue,
+	}
+
+	err = opportunity.CreateToDB(ctx)
+	if err != nil {
+		return errs.ErrServerError().WithDetail(err).WithFiberStatus(c)
+	}
+
+	return utils.FiberJSONWrapWithStatusCreated(c, map[string]config.ObfuscatedInt{
+		"id": opportunity.Id,
+	})
 }
