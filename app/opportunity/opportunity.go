@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/get10xteam/sales-module-backend/app/client"
+	"github.com/get10xteam/sales-module-backend/app/status"
 	"github.com/get10xteam/sales-module-backend/app/user"
 	"github.com/get10xteam/sales-module-backend/errs"
 	"github.com/get10xteam/sales-module-backend/plumbings/config"
@@ -109,11 +110,21 @@ func (cop *CreateOpportunityPayload) Validate(ctx context.Context) *errs.Error {
 		return errs.ErrServerError().WithDetail(err)
 	}
 
+	_, err = status.StatusByCode(ctx, cop.StatusCode)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return errs.ErrNotExist().WithMessage("cannot find status_code")
+		}
+
+		return errs.ErrServerError().WithDetail(err)
+	}
+
 	return nil
 }
 
 // for testing purposes
 // INSERT INTO clients (id, "name", logo_url) VALUES(1, 'client test', NULL);
+// INSERT INTO statuses (code, "name", description) VALUES('DRAFT', 'draft', 'drafting mode', now());
 
 func CreateOpportunity(c *fiber.Ctx) error {
 	opportunityReq := CreateOpportunityPayload{}
