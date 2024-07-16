@@ -132,6 +132,8 @@ the user is only allowed to chose any user that is below the user hierarchically
 
 The only place where the user is allowed to load all users in the organization
 would be for user management
+
+DeactivatedTs should be also included with includeDeactivated queryParam
 */
 func UserDropdown(ctx context.Context, search string) ([]*User, error) {
 	selectBuilder := pgdb.Qb.Select("id", "name", "email", "create_ts").From("users")
