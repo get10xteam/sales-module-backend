@@ -2,6 +2,7 @@ package httpServer
 
 import (
 	"errors"
+	"net/http"
 	"os"
 	"runtime"
 	"strconv"
@@ -186,7 +187,7 @@ func reqLogger(ctx *fiber.Ctx) error {
 
 func errHandler(c *fiber.Ctx, err error) error {
 	if errors.Is(err, fiber.ErrNotFound) {
-		return c.JSON(errs.ErrRouteNotFound())
+		return c.Status(http.StatusNotFound).JSON(errs.ErrRouteNotFound())
 	}
 	if appErr, ok := err.(*errs.Error); ok {
 		return c.JSON(appErr)
