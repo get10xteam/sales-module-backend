@@ -31,6 +31,26 @@ type User struct {
 	Name           *string              `json:"name,omitempty" db:"name"`
 	ProfileImgUrl  *string              `json:"profileImgUrl,omitempty" db:"profile_img_url"`
 	CreateTs       time.Time            `json:"createTs,omitempty" db:"create_ts"`
+	/* TODO
+		ALLOW user to login and access their profile (loadAuth)
+		but DISALLOW user do ANY OTHER API CALL (MustAuthMiddleware)
+	 */
+	DeactivatedTs  *time.Time            `json:"deactivatedTs" db:"deactivatedts"`
+	/* TODO
+	I'd imagine that on the user list, the showing Level I, Level II would be nice
+	We shouldn't need to develop CREATE/UPDATE APIs for level, but we should develop List APIs
+	That way, the list of levels can be loaded by frontend and loaded into ReactContext
+	and matched to be displayed to the users
+	*/
+	LevelId int `json:"levelId"`
+	/* TODO
+	use left join on the query builder for listing to always load the user's parent's name.
+	Of course it doesn't always have to be loaded, such in user drop down.
+	Which is why we need `type UserSearchQuery`.
+	I'd suggest define this outside of this file (user.go), as in userManagement.go
+	*/
+	ParentUserId   *int    `json:"parentUserId,omitempty"`
+	ParentUserName *string `json:"parentUserName,omitempty"`
 }
 
 func (u *User) CreateToDB(ctx context.Context) (err error) {
@@ -98,6 +118,21 @@ func UserById(ctx context.Context, id config.ObfuscatedInt, cols ...string) (u *
 	return u, err
 }
 
+/*
+	TODO
+
+1. Having a full user listing should not be allowed.
+Pagination should be on by default, unless getAll is supplied in the search query
+2. So we should create `type UserSearchQuery` to allow for better flexibility
+Why is this required?
+Because from HTTP/handler level, we can read the active user
+Don't forget because of the hierarchical rule,
+the user is only allowed to chose any user that is below the user hierarchically
+(use where in a WITH RECURSIVE ... SELECT ... UNION query)
+
+The only place where the user is allowed to load all users in the organization
+would be for user management
+*/
 func UserDropdown(ctx context.Context, search string) ([]*User, error) {
 	selectBuilder := pgdb.Qb.Select("id", "name", "email", "create_ts").From("users")
 

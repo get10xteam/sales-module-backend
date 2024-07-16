@@ -11,6 +11,7 @@ create table users (
     create_ts timestamptz not null default now(),
     level_id int references levels(id),
     parent_id int references users(id)
+    -- add deactivatedts timestamptz column
 );
 
 create table user_email_verifications (

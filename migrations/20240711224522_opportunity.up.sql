@@ -9,6 +9,7 @@ create table opportunities(
     status_code text references statuses(code),
     name text not null,
     description text,
+    -- TODO confirm data type for talent_budget, non_talent_budget, revenue
     talent_budget numeric(20, 5),
     non_talent_budget numeric(20, 5),
     revenue numeric(20, 5),
