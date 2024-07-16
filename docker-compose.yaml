@@ -1,0 +1,21 @@
+version: "3.2"
+services:
+  database:
+    image: postgres:alpine
+    environment:
+      POSTGRES_USER: get10x
+      POSTGRES_PASSWORD: get10x
+      POSTGRES_DB: get10xproject
+    ports:
+      - 5432:5432
+    volumes:
+      - database-data:/var/lib/postgresql/data/
+    networks:
+      - tenx
+
+networks:
+  tenx:
+    driver: bridge
+
+volumes:
+  database-data:

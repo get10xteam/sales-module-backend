@@ -1,0 +1,71 @@
+DB:
+  Host: 127.0.0.1
+  Port: 5432
+  Database: get10xproject-sales
+  Username: get10x
+  Password: get10x
+  SSL: disable
+  MigrationFromEmbedded: false
+  MigrationStatementTimeoutSeconds: 120
+  MigrationDirectory: migrations
+Log:
+  Destinations:
+    Console: true
+    DevConsole: true
+    GcpLogging: false
+    RotatedFile: false
+  RotatedFileConfig:
+    FolderPath: logs
+    RotateCronFrequency: "0 0 * * *"
+    FileNameFormat: 060102.log
+    MaxLogFilesKept: 10000
+    MaxTotalLogFileSize: 300MB
+SMTP:
+  Host: smtp-relay.com
+  Port: 587
+  #AuthType: login # usually there's no need to set this
+  Username: benedict@xquisite.ai
+  Password: password
+  From: Get10xDev <noreply@dev.get10x.asia>
+Auth:
+  AuthorizationExpirationSeconds: 180
+  GoogleAuth:
+    ClientId: 123456781234-abcxyz.apps.googleusercontent.com
+    ClientSecret: GABCDE-abcdwxyz
+  MicrosoftAuth:
+    ClientId: fb700ed6-a78a-4233-97b3-2030e08b6138
+    ClientKeyPem: |
+      -----BEGIN PRIVATE KEY-----
+      blablabla...
+      -----END PRIVATE KEY-----
+    ClientCertPem: |
+      -----BEGIN CERTIFICATE-----
+      blablabla...
+      -----END CERTIFICATE-----
+DeploymentURLs:
+  UsrResetPassword: https://app.get10x.team/auth/reset-password?token=
+  UsrSignUpVerify: https://app.get10x.team/auth/register-verify?token=
+  HQResetPassword: https://admin.get10x.team/resetpassword?token=
+  HQWelcomeSetPassword: https://admin.get10x.team/resetpassword?token=
+Storage:
+  Driver: S3 # currently only S3
+  S3: # Must be set when Driver == S3
+    UsePathStyle: false
+    Region: ap-southeast-3 # must be specified when UsePathStyle is false
+    Bucket: get10xbucket
+    BaseEndpoint: https://some.url # must be specified when UsePathStyle is true
+    BasePublicURL: https://some.url # must be specified when UsePathStyle is true
+    Key: blablabla...
+    Secret: blablabla...
+Runtime:
+  ListenAddress: :8080
+  LogHTTP: true
+  LogAllHeaderBody: false
+  MaxBodySizeMB: 20
+  AppName: Get10xSalesModule
+  ExposeErrorDetails: true
+  SessionDurationMinutes: 30
+  AllowCors: true
+  ServeFrontEndDir: "../adminfrontend/dist"
+  # will only have effect when both https.cert.pem and https.key.pem are present
+  ListenHttps: false
