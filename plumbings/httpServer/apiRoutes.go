@@ -60,5 +60,6 @@ func apiRoutes(apiRouter fiber.Router) {
 	opportunities := apiRouter.Group("opportunities")
 	{ // opportunity
 		opportunities.Post("", user.MustAuthMiddleware, opportunity.CreateOpportunityHandler) // tested
+		opportunities.Get("", user.MustAuthMiddleware, opportunity.ListOpportunitiesHandler)  // tested
 	}
 }
