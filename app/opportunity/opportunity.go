@@ -7,6 +7,8 @@ import (
 	"sync"
 	"time"
 
+	"github.com/Masterminds/squirrel"
+	"github.com/georgysavva/scany/v2/pgxscan"
 	"github.com/get10xteam/sales-module-backend/app/client"
 	"github.com/get10xteam/sales-module-backend/app/status"
 	"github.com/get10xteam/sales-module-backend/app/user"
@@ -192,4 +194,94 @@ func CreateOpportunityHandler(c *fiber.Ctx) error {
 	return utils.FiberJSONWrapWithStatusCreated(c, map[string]config.ObfuscatedInt{
 		"id": opportunity.Id,
 	})
+}
+
+type opportunitiesSearchParams struct {
+	Search   string `query:"search"`
+	Page     uint64 `query:"page"`
+	PageSize uint64 `query:"pageSize"`
+	q        squirrel.SelectBuilder
+}
+
+func (s *opportunitiesSearchParams) Apply() {
+	s.q = pgdb.Qb.Select().From("opportunities").Columns(
+		"id",
+		"owner_id",
+		"assignee_id",
+		"client_id",
+		"status_code",
+		"name",
+		"description",
+		"talent_budget",
+		"non_talent_budget",
+		"revenue",
+		"expected_profitability_percentage",
+		"expected_profitability_amount",
+		"create_ts",
+	)
+	if len(s.Search) > 0 {
+		search := "%" + s.Search + "%"
+		s.q = s.q.Where(squirrel.Or{
+			squirrel.Expr("name ilike ?", search), squirrel.Expr("email ilike ?", search),
+		})
+	}
+}
+func (s *opportunitiesSearchParams) GetData(ctx context.Context) ([]Opportunity, error) {
+	if s.PageSize == 0 {
+		s.PageSize = 20
+	}
+	if s.Page > 0 {
+		s.q = s.q.Offset(s.PageSize * s.Page)
+	}
+	s.q = s.q.Limit(s.PageSize)
+	r, err := pgdb.QbQuery(ctx, s.q)
+	if err != nil {
+		return nil, err
+	}
+	opportunities := make([]Opportunity, 0)
+	for r.Next() {
+		var u Opportunity
+		err := pgxscan.ScanRow(&u, r)
+		if err != nil {
+			return nil, err
+		}
+		opportunities = append(opportunities, u)
+	}
+	return opportunities, nil
+}
+func (s *opportunitiesSearchParams) GetCount(ctx context.Context) (cnt int, err error) {
+	s.q = s.q.
+		RemoveColumns().
+		RemoveLimit().
+		RemoveOffset().
+		Column("count(1) as count")
+	r, err := pgdb.QbQueryRow(ctx, s.q)
+	if err != nil {
+		return
+	}
+
+	err = r.Scan(&cnt)
+	return
+}
+
+func ListOpportunitiesHandler(c *fiber.Ctx) (err error) {
+	ctx := c.Context()
+	var s opportunitiesSearchParams
+	err = c.QueryParser(&s)
+	if err != nil {
+		return errs.ErrBadParameter().WithDetail(err)
+	}
+	s.Apply()
+	data, err := s.GetData(ctx)
+	if err != nil {
+		return errs.ErrServerError().WithDetail(err)
+	}
+	if s.Page > 0 {
+		return utils.FiberJSONWrap(c, data)
+	}
+	count, err := s.GetCount(ctx)
+	if err != nil {
+		return errs.ErrServerError().WithDetail(err)
+	}
+	return utils.FiberJSONWrap(c, data, count)
 }
