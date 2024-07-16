@@ -45,6 +45,7 @@ Auth:
 DeploymentURLs:
   UsrResetPassword: https://app.get10x.team/auth/reset-password?token=
   UsrSignUpVerify: https://app.get10x.team/auth/register-verify?token=
+  # TODO These HQ prefixes are not used, right?
   HQResetPassword: https://admin.get10x.team/resetpassword?token=
   HQWelcomeSetPassword: https://admin.get10x.team/resetpassword?token=
 Storage:

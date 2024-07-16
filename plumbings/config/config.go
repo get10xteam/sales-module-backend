@@ -30,6 +30,9 @@ type RuntimeConfigType struct {
 type DeploymentURLsType struct {
 	UsrResetPassword     string `yaml:"UsrResetPassword"`
 	UsrSignUpVerify      string `yaml:"UsrSignUpVerify"`
+	/* TODO
+		These HQ prefixes are not used, right?
+	 */
 	HQResetPassword      string `yaml:"HQResetPassword"`
 	HQWelcomeSetPassword string `yaml:"HQWelcomeSetPassword"`
 }
