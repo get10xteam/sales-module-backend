@@ -160,7 +160,7 @@ func (cop *CreateOpportunityPayload) Validate(ctx context.Context) *errs.Error {
 // INSERT INTO clients (id, "name", logo_url) VALUES(1, 'client test', NULL);
 // INSERT INTO statuses (code, "name", description) VALUES('DRAFT', 'draft', 'drafting mode', now());
 
-func CreateOpportunity(c *fiber.Ctx) error {
+func CreateOpportunityHandler(c *fiber.Ctx) error {
 	opportunityReq := CreateOpportunityPayload{}
 	err := c.BodyParser(&opportunityReq)
 	if err != nil {
