@@ -43,6 +43,11 @@ type Opportunity struct {
 	StatusCode                      string               `json:"status_code" db:"status_code"`
 	Name                            string               `json:"name" db:"name"`
 	Description                     *string              `json:"description,omitempty" db:"description"`
+	/* TODO
+		For TalentBudget, NonTalentBudget and Revenue
+		- If we use go's float64, pgsql should use double precision
+		- If we use go's int64, pgsql should use bigint
+	 */
 	TalentBudget                    int                  `json:"talent_budget" db:"talent_budget"`
 	NonTalentBudget                 int                  `json:"non_talent_budget" db:"non_talent_budget"`
 	Revenue                         int                  `json:"revenue" db:"revenue"`
