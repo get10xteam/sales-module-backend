@@ -55,3 +55,11 @@ generated always as (
 - [X] ability to accept multiple hierarchy levels (parent_id) 
 - [ ] ability to control access of each user 
 => ambil view based on user- hierarchy
+
+# table action (soon)
+pakai rule
+based on status
+ketika draft -> bisa action apa saja yang bisa
+misal
+draft -> release if revenue lebih dari 1M
+

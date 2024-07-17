@@ -43,16 +43,11 @@ type Opportunity struct {
 	StatusCode                      string               `json:"status_code" db:"status_code"`
 	Name                            string               `json:"name" db:"name"`
 	Description                     *string              `json:"description,omitempty" db:"description"`
-	/* TODO
-		For TalentBudget, NonTalentBudget and Revenue
-		- If we use go's float64, pgsql should use double precision
-		- If we use go's int64, pgsql should use bigint
-	 */
-	TalentBudget                    int                  `json:"talent_budget" db:"talent_budget"`
-	NonTalentBudget                 int                  `json:"non_talent_budget" db:"non_talent_budget"`
-	Revenue                         int                  `json:"revenue" db:"revenue"`
+	TalentBudget                    float64              `json:"talent_budget" db:"talent_budget"`
+	NonTalentBudget                 float64              `json:"non_talent_budget" db:"non_talent_budget"`
+	Revenue                         float64              `json:"revenue" db:"revenue"`
 	ExpectedProfitabilityPercentage float64              `json:"expected_profitability_percentage" db:"expected_profitability_percentage"`
-	ExpectedProfitabilityAmount     int                  `json:"expected_profitability_amount" db:"expected_profitability_amount"`
+	ExpectedProfitabilityAmount     float64              `json:"expected_profitability_amount" db:"expected_profitability_amount"`
 	CreateTs                        time.Time            `json:"createTs" db:"create_ts"`
 }
 
@@ -84,9 +79,9 @@ type CreateOpportunityPayload struct {
 	StatusCode      string               `json:"status_code,omitempty"` // check statuses
 	Name            string               `json:"name"`
 	Description     *string              `json:"description,omitempty"`
-	TalentBudget    int                  `json:"talent_budget,omitempty"`
-	NonTalentBudget int                  `json:"non_talent_budget,omitempty"`
-	Revenue         int                  `json:"revenue,omitempty"`
+	TalentBudget    float64              `json:"talent_budget,omitempty"`
+	NonTalentBudget float64              `json:"non_talent_budget,omitempty"`
+	Revenue         float64              `json:"revenue,omitempty"`
 }
 
 func (cop *CreateOpportunityPayload) Validate(ctx context.Context) *errs.Error {
@@ -171,12 +166,12 @@ func CreateOpportunityHandler(c *fiber.Ctx) error {
 	opportunityReq := CreateOpportunityPayload{}
 	err := c.BodyParser(&opportunityReq)
 	if err != nil {
-		return errs.ErrBadParameter().WithMessage("Body not valid").WithFiberStatus(c)
+		return errs.ErrBadParameter().WithMessage("Body not valid")
 	}
 
 	ctx := c.Context()
 	if err := opportunityReq.Validate(ctx); err != nil {
-		return err.WithFiberStatus(c)
+		return err
 	}
 
 	opportunity := Opportunity{
@@ -193,7 +188,7 @@ func CreateOpportunityHandler(c *fiber.Ctx) error {
 
 	err = opportunity.CreateToDB(ctx)
 	if err != nil {
-		return errs.ErrServerError().WithDetail(err).WithFiberStatus(c)
+		return errs.ErrServerError().WithDetail(err)
 	}
 
 	return utils.FiberJSONWrapWithStatusCreated(c, map[string]config.ObfuscatedInt{

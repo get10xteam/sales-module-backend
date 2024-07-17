@@ -92,7 +92,7 @@ func UserResetPasswordStartHandler(c *fiber.Ctx) (err error) {
 	}{}
 	err = c.BodyParser(f)
 	if err != nil {
-		return errs.ErrBadParameter().WithMessage("Email address must be set").WithFiberStatus(c)
+		return errs.ErrBadParameter().WithMessage("Email address must be set")
 	}
 	if f.Email == "" {
 		return utils.FiberJSONWrap(c, f.Email)
@@ -102,11 +102,11 @@ func UserResetPasswordStartHandler(c *fiber.Ctx) (err error) {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return utils.FiberJSONWrap(c, f.Email)
 		}
-		return errs.ErrServerError().WithDetail(err).WithFiberStatus(c)
+		return errs.ErrServerError().WithDetail(err)
 	}
 	_, err = SendUserEmailVerification(ctx, UserEmailVerificationPurpose_PasswordReset, u.Email, &u.Id, nil)
 	if err != nil {
-		return errs.ErrServerError().WithDetail(err).WithFiberStatus(c)
+		return errs.ErrServerError().WithDetail(err)
 	}
 	return utils.FiberJSONWrap(c, f.Email)
 }
@@ -116,54 +116,54 @@ func UserResetPasswordSubmitHandler(c *fiber.Ctx) (err error) {
 	if c.Method() == "GET" {
 		err = c.QueryParser(v)
 		if err != nil {
-			return errs.ErrBadParameter().WithDetail(err).WithMessage("Reset token invalid").WithFiberStatus(c)
+			return errs.ErrBadParameter().WithDetail(err).WithMessage("Reset token invalid")
 		}
 	} else {
 		err = c.BodyParser(v)
 		if err != nil {
-			return errs.ErrBadParameter().WithDetail(err).WithMessage("Password or reset token invalid").WithFiberStatus(c)
+			return errs.ErrBadParameter().WithDetail(err).WithMessage("Password or reset token invalid")
 		}
 	}
 	if v.Id.IsEmpty() {
-		return errs.ErrBadParameter().WithMessage("Reset token not set").WithFiberStatus(c)
+		return errs.ErrBadParameter().WithMessage("Reset token not set")
 	}
 	if c.Method() == "PUT" && v.Password == "" {
-		return errs.ErrBadParameter().WithMessage("Password must be set").WithFiberStatus(c)
+		return errs.ErrBadParameter().WithMessage("Password must be set")
 	}
 	newPassword := v.Password
 	v, err = UserEmailVerificationByPurposeId(ctx, UserEmailVerificationPurpose_PasswordReset, v.Id)
 	if err != nil {
 		if errs.Is(err, pgx.ErrNoRows) {
-			return errs.ErrNotExist().WithMessage("Reset token not found").WithFiberStatus(c)
+			return errs.ErrNotExist().WithMessage("Reset token not found")
 		}
-		return errs.ErrServerError().WithDetail(err).WithFiberStatus(c)
+		return errs.ErrServerError().WithDetail(err)
 	}
 	if v.UsedTs != nil {
-		return errs.ErrBadParameter().WithMessage("Reset token has been used").WithFiberStatus(c)
+		return errs.ErrBadParameter().WithMessage("Reset token has been used")
 	}
 	if v.ExpiryTs.Before(time.Now()) {
-		return errs.ErrBadParameter().WithMessage("Reset token has expired").WithFiberStatus(c)
+		return errs.ErrBadParameter().WithMessage("Reset token has expired")
 	}
 	if v.UserId == nil {
-		return errs.ErrBadParameter().WithMessage("Reset token not linked to a user").WithFiberStatus(c)
+		return errs.ErrBadParameter().WithMessage("Reset token not linked to a user")
 	}
 	u, err := UserById(ctx, *v.UserId, "id", "email", "email_confirmed")
 	if err != nil {
-		return errs.ErrServerError().WithDetail(err).WithFiberStatus(c)
+		return errs.ErrServerError().WithDetail(err)
 	}
 	if c.Method() == "GET" {
 		if !u.EmailConfirmed {
 			userUpdates := fiber.Map{"email_confirmed": true}
 			err = u.UpdateToDB(ctx, userUpdates)
 			if err != nil {
-				return errs.ErrServerError().WithDetail(err).WithFiberStatus(c)
+				return errs.ErrServerError().WithDetail(err)
 			}
 		}
 		return utils.FiberJSONWrap(c, u.Email)
 	}
 	hashed, err := utils.CheckAndHashPassword(newPassword)
 	if err != nil {
-		return errs.ErrServerError().WithDetail(err).WithFiberStatus(c)
+		return errs.ErrServerError().WithDetail(err)
 	}
 	userUpdates := fiber.Map{"password": hashed}
 	if !u.EmailConfirmed {
@@ -171,11 +171,11 @@ func UserResetPasswordSubmitHandler(c *fiber.Ctx) (err error) {
 	}
 	err = u.UpdateToDB(ctx, userUpdates)
 	if err != nil {
-		return errs.ErrServerError().WithDetail(err).WithFiberStatus(c)
+		return errs.ErrServerError().WithDetail(err)
 	}
 	err = v.MarkUsed(ctx)
 	if err != nil {
-		return errs.ErrServerError().WithDetail(err).WithFiberStatus(c)
+		return errs.ErrServerError().WithDetail(err)
 	}
 	return utils.FiberJSONWrap(c, u.Email)
 }

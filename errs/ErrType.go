@@ -5,7 +5,6 @@ import (
 	"net/http"
 
 	"github.com/goccy/go-json"
-	"github.com/gofiber/fiber/v2"
 	"github.com/rs/zerolog"
 )
 
@@ -114,49 +113,60 @@ func (err *Error) WithHTTPStatus() bool {
 		return true
 	}
 }
-/* TODO
+
+/*
+	TODO
+
 [1]
 The problem with using this method is,
 The error does NOT get forwarded into the logger error chain (httpServer.go#143)
 As a result, errors might not be catched by the global HTTP error logger.
 
 [2]
-If you actually want to use HTTP response codes on errors, 
+If you actually want to use HTTP response codes on errors,
 You might probably want use this function signature
-	func (err *Error) FiberStatus() int 
+
+	func (err *Error) FiberStatus() int
+
 And use this signature on errHandler (in httpServer.go#188)
 
 [3]
 With this current code implementation, the identification of error just get a new criteria
+
 	Check if 200 <= HTTP status code <= 400
-		and/or 
+		and/or
 	Check if error = true
+
 What benefit do you have in mind in doing this?
 
 [4]
 With this way, the responsibility of calling this method
-now lies in every controller/handler. 
+now lies in every controller/handler.
 A very easy thing to miss.
- */
-func (err *Error) WithFiberStatus(c *fiber.Ctx) error {
+*/
+
+func (err *Error) FiberStatus() int {
 	switch err.code {
 	case "unauthorized":
-		return c.Status(http.StatusUnauthorized).JSON(err)
+		return http.StatusUnauthorized
 	case "unauthenticated":
-		return c.Status(http.StatusForbidden).JSON(err)
+		return http.StatusForbidden
 	case "bad_parameter":
-		return c.Status(http.StatusBadRequest).JSON(err)
+		return http.StatusBadRequest
 	case "server_error":
-		return c.Status(http.StatusInternalServerError).JSON(err)
+		return http.StatusInternalServerError
 	case "invalid_user":
-		return c.Status(http.StatusBadRequest).JSON(err)
+		return http.StatusBadRequest
 	case "preexist":
-		return c.Status(http.StatusConflict).JSON(err)
+		return http.StatusConflict
 	case "notexist":
-		return c.Status(http.StatusNotFound).JSON(err)
+		return http.StatusNotFound
 	case "route_not_found":
-		return c.Status(http.StatusNotFound).JSON(err)
+		return http.StatusNotFound
 	default:
-		return c.Status(http.StatusInternalServerError).JSON(err)
+		return http.StatusInternalServerError
 	}
 }
+
+// coba dokumentasi based on ts
+//

@@ -6,7 +6,6 @@ import (
 	"net"
 	"time"
 
-	"github.com/Masterminds/squirrel"
 	"github.com/get10xteam/sales-module-backend/errs"
 	"github.com/get10xteam/sales-module-backend/plumbings/config"
 	"github.com/get10xteam/sales-module-backend/plumbings/storage"
@@ -32,10 +31,10 @@ type User struct {
 	ProfileImgUrl  *string              `json:"profileImgUrl,omitempty" db:"profile_img_url"`
 	CreateTs       time.Time            `json:"createTs,omitempty" db:"create_ts"`
 	/* TODO
-		ALLOW user to login and access their profile (loadAuth)
-		but DISALLOW user do ANY OTHER API CALL (MustAuthMiddleware)
-	 */
-	DeactivatedTs  *time.Time            `json:"deactivatedTs" db:"deactivatedts"`
+	ALLOW user to login and access their profile (loadAuth)
+	but DISALLOW user do ANY OTHER API CALL (MustAuthMiddleware)
+	*/
+	DeactivatedTs *time.Time `json:"deactivatedTs" db:"deactivated_ts"`
 	/* TODO
 	I'd imagine that on the user list, the showing Level I, Level II would be nice
 	We shouldn't need to develop CREATE/UPDATE APIs for level, but we should develop List APIs
@@ -49,10 +48,11 @@ type User struct {
 	Which is why we need `type UserSearchQuery`.
 	I'd suggest define this outside of this file (user.go), as in userManagement.go
 	*/
-	ParentUserId   *int    `json:"parentUserId,omitempty"`
-	ParentUserName *string `json:"parentUserName,omitempty"`
+	ParentUserId   *int    `json:"parentUserId,omitempty" db:"parent_id"`
+	ParentUserName *string `json:"parentUserName,omitempty" db:"parent_name"`
 }
 
+// level id on created user must be calculated based on the next level
 func (u *User) CreateToDB(ctx context.Context) (err error) {
 	insertMap := map[string]any{
 		"email_confirmed": u.EmailConfirmed,
@@ -118,52 +118,6 @@ func UserById(ctx context.Context, id config.ObfuscatedInt, cols ...string) (u *
 	return u, err
 }
 
-/*
-	TODO
-
-1. Having a full user listing should not be allowed.
-Pagination should be on by default, unless getAll is supplied in the search query
-2. So we should create `type UserSearchQuery` to allow for better flexibility
-Why is this required?
-Because from HTTP/handler level, we can read the active user
-Don't forget because of the hierarchical rule,
-the user is only allowed to chose any user that is below the user hierarchically
-(use where in a WITH RECURSIVE ... SELECT ... UNION query)
-
-The only place where the user is allowed to load all users in the organization
-would be for user management
-
-DeactivatedTs should be also included with includeDeactivated queryParam
-*/
-func UserDropdown(ctx context.Context, search string) ([]*User, error) {
-	selectBuilder := pgdb.Qb.Select("id", "name", "email", "create_ts").From("users")
-
-	if search != "" {
-		search = "%" + search + "%"
-		selectBuilder = selectBuilder.Where(squirrel.Or{
-			squirrel.Expr("name ilike ?", search), squirrel.Expr("email ilike ?", search),
-		})
-	}
-
-	r, err := pgdb.QbQuery(ctx, selectBuilder)
-	if err != nil {
-		return nil, err
-	}
-	defer r.Close()
-
-	users := []*User{}
-	for r.Next() {
-		var u User
-		err = pgxscan.ScanRow(&u, r)
-		if err != nil {
-			return nil, err
-		}
-		users = append(users, &u)
-	}
-
-	return users, err
-}
-
 type UserEmailVerificationPurpose int
 
 const (
@@ -207,21 +161,21 @@ func UserLoginHandler(c *fiber.Ctx) (err error) {
 	}
 	err = c.BodyParser(&f)
 	if err != nil {
-		return errs.ErrBadParameter().WithMessage("Body not valid").WithFiberStatus(c)
+		return errs.ErrBadParameter().WithMessage("Body not valid")
 	}
 	if f.Email == "" || f.Password == "" {
-		return errs.ErrBadParameter().WithMessage("Email and password must be set").WithFiberStatus(c)
+		return errs.ErrBadParameter().WithMessage("Email and password must be set")
 	}
 	u, err := UserByEmail(ctx, f.Email, "id", "email_confirmed", "email", "name", "password", "profile_img_url")
 	if err != nil || u == nil || u.Password == nil {
 		if errors.Is(err, pgx.ErrNoRows) || u == nil || u.Password == nil {
-			return errs.ErrInvalidUser().WithFiberStatus(c)
+			return errs.ErrInvalidUser()
 		}
-		return errs.ErrServerError().WithDetail(err).WithFiberStatus(c)
+		return errs.ErrServerError().WithDetail(err)
 	}
 	err = utils.VerifyPassword(*u.Password, f.Password)
 	if err != nil {
-		return errs.ErrInvalidUser().WithFiberStatus(c)
+		return errs.ErrInvalidUser()
 	}
 	var expiry int
 	if !f.Remember {
@@ -229,7 +183,7 @@ func UserLoginHandler(c *fiber.Ctx) (err error) {
 	}
 	s, err := u.NewSession(ctx, net.ParseIP(c.IP()), string(c.Context().UserAgent()), expiry)
 	if err != nil {
-		return errs.ErrServerError().WithDetail(err).WithFiberStatus(c)
+		return errs.ErrServerError().WithDetail(err)
 	}
 	s.setHTTP(c)
 
@@ -264,15 +218,15 @@ func MustAuthMiddleware(c *fiber.Ctx) (err error) {
 	ctx := c.Context()
 	sStr := c.Cookies(sessionCookieKey)
 	if sStr == "" {
-		return errs.ErrUnauthenticated().WithFiberStatus(c)
+		return errs.ErrUnauthenticated()
 	}
 	s, err := sessionByStrId(ctx, sStr)
 	if err != nil {
-		return errs.ErrUnauthenticated().WithFiberStatus(c)
+		return errs.ErrUnauthenticated()
 	}
 	if s.LogOutTs != nil || s.ExpiryTs != nil && s.ExpiryTs.Before(time.Now()) {
 		c.ClearCookie(sessionCookieKey)
-		return errs.ErrUnauthenticated().WithFiberStatus(c)
+		return errs.ErrUnauthenticated()
 	}
 	err = s.ensureRenewal(c)
 	if err != nil {
@@ -281,7 +235,7 @@ func MustAuthMiddleware(c *fiber.Ctx) (err error) {
 	// check if user exist or not
 	u, err := UserById(ctx, s.UserId)
 	if err != nil {
-		return errs.ErrServerError().WithDetail(err).WithFiberStatus(c)
+		return errs.ErrServerError().WithDetail(err)
 	}
 	c.Locals(userIdLocalsKey, u)
 	return c.Next()
@@ -290,7 +244,7 @@ func UserProfileHandler(c *fiber.Ctx) (err error) {
 	u := c.Locals(userIdLocalsKey).(*User)
 	u, err = UserById(c.Context(), u.Id, "id", "email", "email_confirmed", "name", "profile_img_url")
 	if err != nil {
-		return errs.ErrServerError().WithDetail(err).WithFiberStatus(c)
+		return errs.ErrServerError().WithDetail(err)
 	}
 
 	return utils.FiberJSONWrap(c, u)
@@ -304,21 +258,21 @@ func ChangeProfileHandler(c *fiber.Ctx) (err error) {
 		u.ProfileImgUrl = &profileImgUrl
 		err = u.UpdateToDB(c.Context(), toUpdate)
 		if err != nil {
-			return errs.ErrServerError().WithDetail(err).WithFiberStatus(c)
+			return errs.ErrServerError().WithDetail(err)
 		}
 		return utils.FiberJSONWrap(c, u)
 	}
 	updates := make(map[string]any)
 	err = c.BodyParser(&updates)
 	if err != nil {
-		return errs.ErrServerError().WithDetail(err).WithFiberStatus(c)
+		return errs.ErrServerError().WithDetail(err)
 	}
 	if name, ok := updates["name"].(string); ok {
 		toUpdate["name"] = name
 		u.Name = &name
 		err = u.UpdateToDB(c.Context(), toUpdate)
 		if err != nil {
-			return errs.ErrServerError().WithDetail(err).WithFiberStatus(c)
+			return errs.ErrServerError().WithDetail(err)
 		}
 	}
 	return utils.FiberJSONWrap(c, u)
@@ -337,7 +291,7 @@ func UserLogoutHandler(c *fiber.Ctx) (err error) {
 	}
 	err = s.logOut(ctx)
 	if err != nil {
-		return errs.ErrServerError().WithDetail(err).WithFiberStatus(c)
+		return errs.ErrServerError().WithDetail(err)
 	}
 	s.setHTTP(c)
 	return utils.FiberJSONWrap(c, true)
@@ -350,16 +304,4 @@ func UserFromHttp(c *fiber.Ctx) *User {
 		return u
 	}
 	return nil
-}
-
-func UserDropdownHandler(c *fiber.Ctx) (err error) {
-
-	search := c.Query("search", "")
-
-	users, err := UserDropdown(c.Context(), search)
-	if err != nil {
-		return errs.ErrServerError().WithDetail(err).WithFiberStatus(c)
-	}
-
-	return utils.FiberJSONWrap(c, users)
 }

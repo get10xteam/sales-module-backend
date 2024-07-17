@@ -10,15 +10,15 @@ create table opportunities(
     name text not null,
     description text,
     -- TODO confirm data type for talent_budget, non_talent_budget, revenue
-    talent_budget numeric(20, 5),
-    non_talent_budget numeric(20, 5),
-    revenue numeric(20, 5),
+    talent_budget DOUBLE PRECISION,
+    non_talent_budget DOUBLE PRECISION,
+    revenue DOUBLE PRECISION,
     expected_profitability_percentage DOUBLE PRECISION GENERATED ALWAYS AS (
         (
             revenue - talent_budget - non_talent_budget
         ) / revenue
     ) STORED,
-    expected_profitability_amount numeric(20, 5) GENERATED ALWAYS AS (
+    expected_profitability_amount DOUBLE PRECISION GENERATED ALWAYS AS (
         (
             revenue - talent_budget - non_talent_budget
         )
