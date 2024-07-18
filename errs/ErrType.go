@@ -86,6 +86,7 @@ func (err *Error) WithDetail(detail interface{}) *Error {
 	err.detail = detail
 	return err
 }
+
 func (err *Error) ShouldLog() bool {
 	switch err.code {
 	case "unauthorized":
@@ -98,9 +99,11 @@ func (err *Error) ShouldLog() bool {
 		return true
 	}
 }
+
 func Is(errToCheck, target error) bool {
 	return errors.Is(errToCheck, target)
 }
+
 func (err *Error) WithHTTPStatus() bool {
 	switch err.code {
 	case "unauthorized":
@@ -113,37 +116,6 @@ func (err *Error) WithHTTPStatus() bool {
 		return true
 	}
 }
-
-/*
-	TODO
-
-[1]
-The problem with using this method is,
-The error does NOT get forwarded into the logger error chain (httpServer.go#143)
-As a result, errors might not be catched by the global HTTP error logger.
-
-[2]
-If you actually want to use HTTP response codes on errors,
-You might probably want use this function signature
-
-	func (err *Error) FiberStatus() int
-
-And use this signature on errHandler (in httpServer.go#188)
-
-[3]
-With this current code implementation, the identification of error just get a new criteria
-
-	Check if 200 <= HTTP status code <= 400
-		and/or
-	Check if error = true
-
-What benefit do you have in mind in doing this?
-
-[4]
-With this way, the responsibility of calling this method
-now lies in every controller/handler.
-A very easy thing to miss.
-*/
 
 func (err *Error) FiberStatus() int {
 	switch err.code {
@@ -167,6 +139,3 @@ func (err *Error) FiberStatus() int {
 		return http.StatusInternalServerError
 	}
 }
-
-// coba dokumentasi based on ts
-//

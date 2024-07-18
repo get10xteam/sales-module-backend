@@ -30,26 +30,11 @@ type User struct {
 	Name           *string              `json:"name,omitempty" db:"name"`
 	ProfileImgUrl  *string              `json:"profileImgUrl,omitempty" db:"profile_img_url"`
 	CreateTs       time.Time            `json:"createTs,omitempty" db:"create_ts"`
-	/* TODO
-	ALLOW user to login and access their profile (loadAuth)
-	but DISALLOW user do ANY OTHER API CALL (MustAuthMiddleware)
-	*/
-	DeactivatedTs *time.Time `json:"deactivatedTs" db:"deactivated_ts"`
-	/* TODO
-	I'd imagine that on the user list, the showing Level I, Level II would be nice
-	We shouldn't need to develop CREATE/UPDATE APIs for level, but we should develop List APIs
-	That way, the list of levels can be loaded by frontend and loaded into ReactContext
-	and matched to be displayed to the users
-	*/
-	LevelId int `json:"levelId"`
-	/* TODO
-	use left join on the query builder for listing to always load the user's parent's name.
-	Of course it doesn't always have to be loaded, such in user drop down.
-	Which is why we need `type UserSearchQuery`.
-	I'd suggest define this outside of this file (user.go), as in userManagement.go
-	*/
-	ParentUserId   *int    `json:"parentUserId,omitempty" db:"parent_id"`
-	ParentUserName *string `json:"parentUserName,omitempty" db:"parent_name"`
+	DeactivatedTs  *time.Time           `json:"deactivatedTs,omitempty" db:"deactivated_ts"`
+	LevelId        *int                 `json:"levelId" db:"level_id"`
+	// only appear when IncludeRefs is true
+	ParentId   *int    `json:"parentId,omitempty" db:"parent_id"`
+	ParentName *string `json:"parentName,omitempty" db:"parent_name"`
 }
 
 // level id on created user must be calculated based on the next level
@@ -69,6 +54,18 @@ func (u *User) CreateToDB(ctx context.Context) (err error) {
 	}
 	if u.ProfileImgUrl != nil {
 		insertMap["profile_img_url"] = u.ProfileImgUrl
+	}
+	// if level is empty set the level into highest level / lowest id in DB
+	if u.LevelId == nil {
+		rLevel, err := pgdb.QbQueryRow(ctx, pgdb.Qb.Select("id").From("levels").OrderBy("id asc").Limit(1))
+		if err != nil {
+			return err
+		}
+		err = rLevel.Scan(&u.LevelId)
+		if err != nil {
+			return err
+		}
+		insertMap["level_id"] = u.LevelId
 	}
 	r, err := pgdb.QbQueryRow(ctx, pgdb.Qb.Insert("users").SetMap(insertMap).Suffix("returning id"))
 	if err != nil {
@@ -102,6 +99,7 @@ func UserByEmail(ctx context.Context, email string, cols ...string) (u *User, er
 	}
 	return u, err
 }
+
 func UserById(ctx context.Context, id config.ObfuscatedInt, cols ...string) (u *User, err error) {
 	if len(cols) == 0 {
 		cols = []string{"id"}
@@ -134,6 +132,7 @@ func (p UserEmailVerificationPurpose) EmailSubject() string {
 	}
 	return ""
 }
+
 func (p UserEmailVerificationPurpose) EmailBody(resetId b64uuid.B64Uuid) string {
 	switch p {
 	case UserEmailVerificationPurpose_PasswordReset:
@@ -189,6 +188,7 @@ func UserLoginHandler(c *fiber.Ctx) (err error) {
 
 	return utils.FiberJSONWrap(c, u)
 }
+
 func LoadAuthMiddleware(c *fiber.Ctx) (err error) {
 	ctx := c.Context()
 	sStr := c.Cookies(sessionCookieKey)
@@ -214,6 +214,7 @@ func LoadAuthMiddleware(c *fiber.Ctx) (err error) {
 	c.Locals(userIdLocalsKey, u)
 	return c.Next()
 }
+
 func MustAuthMiddleware(c *fiber.Ctx) (err error) {
 	ctx := c.Context()
 	sStr := c.Cookies(sessionCookieKey)
@@ -240,6 +241,7 @@ func MustAuthMiddleware(c *fiber.Ctx) (err error) {
 	c.Locals(userIdLocalsKey, u)
 	return c.Next()
 }
+
 func UserProfileHandler(c *fiber.Ctx) (err error) {
 	u := c.Locals(userIdLocalsKey).(*User)
 	u, err = UserById(c.Context(), u.Id, "id", "email", "email_confirmed", "name", "profile_img_url")
@@ -249,6 +251,7 @@ func UserProfileHandler(c *fiber.Ctx) (err error) {
 
 	return utils.FiberJSONWrap(c, u)
 }
+
 func ChangeProfileHandler(c *fiber.Ctx) (err error) {
 	u := c.Locals(userIdLocalsKey).(*User)
 	toUpdate := make(map[string]any)
