@@ -201,6 +201,8 @@ type opportunitiesSearchParams struct {
 	Page     uint64 `query:"page"`
 	PageSize uint64 `query:"pageSize"`
 	q        squirrel.SelectBuilder
+	SortBy   string `query:"sortBy"`
+	SortType string `query:"sortType"`
 }
 
 func (s *opportunitiesSearchParams) Apply() {
@@ -238,6 +240,36 @@ func (s *opportunitiesSearchParams) Apply() {
 			squirrel.Expr("s.name ilike ?", search),
 		})
 	}
+
+	switch s.SortBy {
+	case "createTs":
+		s.SortBy = "o.create_ts"
+	case "name":
+		s.SortBy = "o.name"
+	case "ownerName":
+		s.SortBy = "uo.name"
+	case "assigneeName":
+		s.SortBy = "ua.name"
+	case "clientName":
+		s.SortBy = "c.name"
+	case "statusName":
+		s.SortBy = "s.name"
+	default:
+		s.SortBy = "o.id"
+	}
+
+	if s.SortType == "" {
+		s.SortType = "desc"
+	}
+
+	s.q = s.q.OrderBy(fmt.Sprintf("%s %s", s.SortBy, s.SortType)).GroupBy(
+		"o.id",
+		"o.name",
+		"uo.name",
+		"ua.name",
+		"c.name",
+		"s.name",
+	)
 }
 
 type OpportunityDetail struct {
@@ -252,12 +284,14 @@ func (s *opportunitiesSearchParams) GetData(ctx context.Context) ([]OpportunityD
 	if s.PageSize == 0 {
 		s.PageSize = 20
 	}
-	if s.Page > 0 {
-		s.q = s.q.Offset(s.PageSize * s.Page)
-	}
+
+	offset := s.PageSize * (s.Page - 1)
+	s.q = s.q.Offset(offset)
 	s.q = s.q.Limit(s.PageSize)
-	sq, _, _ := s.q.ToSql()
-	fmt.Println(sq)
+
+	sql, _, _ := s.q.ToSql()
+	fmt.Println(sql)
+
 	r, err := pgdb.QbQuery(ctx, s.q)
 	if err != nil {
 		return nil, err
@@ -295,17 +329,17 @@ func ListOpportunitiesHandler(c *fiber.Ctx) (err error) {
 	if err != nil {
 		return errs.ErrBadParameter().WithDetail(err)
 	}
+
 	s.Apply()
 	data, err := s.GetData(ctx)
 	if err != nil {
 		return errs.ErrServerError().WithDetail(err)
 	}
-	if s.Page > 0 {
-		return utils.FiberJSONWrap(c, data)
-	}
+
 	count, err := s.GetCount(ctx)
 	if err != nil {
 		return errs.ErrServerError().WithDetail(err)
 	}
+
 	return utils.FiberJSONWrap(c, data, count)
 }
