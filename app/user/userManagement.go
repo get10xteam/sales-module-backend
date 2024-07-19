@@ -12,13 +12,6 @@ import (
 	"gitlab.com/intalko/gosuite/pgdb"
 )
 
-/* to simulate levels
-INSERT INTO levels("name") VALUES('Director');
-INSERT INTO levels("name") VALUES('Director of Operation');
-INSERT INTO levels("name") VALUES('Manager');
-INSERT INTO levels("name") VALUES('Sales');
-*/
-
 type UserSearchQuery struct {
 	Search             string               `query:"search"`
 	IncludeDeactivated bool                 `query:"includeDeactivated"`
