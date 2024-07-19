@@ -37,17 +37,17 @@ import (
 
 type Opportunity struct {
 	Id                              config.ObfuscatedInt `json:"id" db:"id"`
-	OwnerId                         config.ObfuscatedInt `json:"owner_id" db:"owner_id"`
-	AssigneeId                      config.ObfuscatedInt `json:"assignee_id" db:"assignee_id"`
-	ClientId                        config.ObfuscatedInt `json:"client_id" db:"client_id"`
-	StatusCode                      string               `json:"status_code" db:"status_code"`
+	OwnerId                         config.ObfuscatedInt `json:"ownerId" db:"owner_id"`
+	AssigneeId                      config.ObfuscatedInt `json:"assigneeId" db:"assignee_id"`
+	ClientId                        config.ObfuscatedInt `json:"clientId" db:"client_id"`
+	StatusCode                      string               `json:"statusCode" db:"status_code"`
 	Name                            string               `json:"name" db:"name"`
 	Description                     *string              `json:"description,omitempty" db:"description"`
-	TalentBudget                    float64              `json:"talent_budget" db:"talent_budget"`
-	NonTalentBudget                 float64              `json:"non_talent_budget" db:"non_talent_budget"`
+	TalentBudget                    float64              `json:"talentBudget" db:"talent_budget"`
+	NonTalentBudget                 float64              `json:"nonTalentBudget" db:"non_talent_budget"`
 	Revenue                         float64              `json:"revenue" db:"revenue"`
-	ExpectedProfitabilityPercentage float64              `json:"expected_profitability_percentage" db:"expected_profitability_percentage"`
-	ExpectedProfitabilityAmount     float64              `json:"expected_profitability_amount" db:"expected_profitability_amount"`
+	ExpectedProfitabilityPercentage float64              `json:"expectedProfitability_percentage" db:"expected_profitability_percentage"`
+	ExpectedProfitabilityAmount     float64              `json:"expectedProfitability_amount" db:"expected_profitability_amount"`
 	CreateTs                        time.Time            `json:"createTs" db:"create_ts"`
 }
 
@@ -73,14 +73,14 @@ func (u *Opportunity) CreateToDB(ctx context.Context) error {
 }
 
 type CreateOpportunityPayload struct {
-	OwnerId         config.ObfuscatedInt `json:"owner_id,omitempty"`    // check users
-	AssigneeId      config.ObfuscatedInt `json:"assignee_id,omitempty"` // check users
-	ClientId        config.ObfuscatedInt `json:"client_id,omitempty"`   // check clients
-	StatusCode      string               `json:"status_code,omitempty"` // check statuses
+	OwnerId         config.ObfuscatedInt `json:"ownerId,omitempty"`    // check users
+	AssigneeId      config.ObfuscatedInt `json:"assigneeId,omitempty"` // check users
+	ClientId        config.ObfuscatedInt `json:"clientId,omitempty"`   // check clients
+	StatusCode      string               `json:"statusCode,omitempty"` // check statuses
 	Name            string               `json:"name"`
 	Description     *string              `json:"description,omitempty"`
-	TalentBudget    float64              `json:"talent_budget,omitempty"`
-	NonTalentBudget float64              `json:"non_talent_budget,omitempty"`
+	TalentBudget    float64              `json:"talentBudget,omitempty"`
+	NonTalentBudget float64              `json:"nonTalentBudget,omitempty"`
 	Revenue         float64              `json:"revenue,omitempty"`
 }
 
@@ -204,29 +204,51 @@ type opportunitiesSearchParams struct {
 }
 
 func (s *opportunitiesSearchParams) Apply() {
-	s.q = pgdb.Qb.Select().From("opportunities").Columns(
-		"id",
-		"owner_id",
-		"assignee_id",
-		"client_id",
-		"status_code",
-		"name",
-		"description",
-		"talent_budget",
-		"non_talent_budget",
-		"revenue",
-		"expected_profitability_percentage",
-		"expected_profitability_amount",
-		"create_ts",
+	s.q = pgdb.Qb.Select().From("opportunities o").Columns(
+		"o.id",
+		"o.owner_id",
+		"o.assignee_id",
+		"o.client_id",
+		"o.status_code",
+		"o.name",
+		"o.description",
+		"o.talent_budget",
+		"o.non_talent_budget",
+		"o.revenue",
+		"o.expected_profitability_percentage",
+		"o.expected_profitability_amount",
+		"o.create_ts",
+	).LeftJoin("users uo on uo.id = o.owner_id").Columns(
+		"uo.name as owner_name",
+	).LeftJoin("users ua on ua.id = o.assignee_id").Columns(
+		"ua.name as assignee_name",
+	).LeftJoin("clients c on c.id = o.client_id").Columns(
+		"c.name as client_name",
+	).LeftJoin("statuses s on s.code = o.status_code").Columns(
+		"s.name as status_name",
 	)
 	if len(s.Search) > 0 {
 		search := "%" + s.Search + "%"
 		s.q = s.q.Where(squirrel.Or{
-			squirrel.Expr("name ilike ?", search), squirrel.Expr("email ilike ?", search),
+			squirrel.Expr("o.name ilike ?", search),
+			squirrel.Expr("o.description ilike ?", search),
+			squirrel.Expr("uo.name ilike ?", search),
+			squirrel.Expr("ua.name ilike ?", search),
+			squirrel.Expr("c.name ilike ?", search),
+			squirrel.Expr("s.name ilike ?", search),
 		})
 	}
 }
-func (s *opportunitiesSearchParams) GetData(ctx context.Context) ([]Opportunity, error) {
+
+type OpportunityDetail struct {
+	Opportunity
+	OwnerName    string `json:"ownerName" db:"owner_name"`
+	AssigneeName string `json:"assigneeName" db:"assignee_name"`
+	ClientName   string `json:"clientName" db:"client_name"`
+	StatusName   string `json:"statusName" db:"status_name"`
+}
+
+func (s *opportunitiesSearchParams) GetData(ctx context.Context) ([]OpportunityDetail, error) {
 	if s.PageSize == 0 {
 		s.PageSize = 20
 	}
@@ -234,13 +256,15 @@ func (s *opportunitiesSearchParams) GetData(ctx context.Context) ([]Opportunity,
 		s.q = s.q.Offset(s.PageSize * s.Page)
 	}
 	s.q = s.q.Limit(s.PageSize)
+	sq, _, _ := s.q.ToSql()
+	fmt.Println(sq)
 	r, err := pgdb.QbQuery(ctx, s.q)
 	if err != nil {
 		return nil, err
 	}
-	opportunities := make([]Opportunity, 0)
+	opportunities := make([]OpportunityDetail, 0)
 	for r.Next() {
-		var u Opportunity
+		var u OpportunityDetail
 		err := pgxscan.ScanRow(&u, r)
 		if err != nil {
 			return nil, err
