@@ -46,8 +46,8 @@ type Opportunity struct {
 	TalentBudget                    float64              `json:"talentBudget" db:"talent_budget"`
 	NonTalentBudget                 float64              `json:"nonTalentBudget" db:"non_talent_budget"`
 	Revenue                         float64              `json:"revenue" db:"revenue"`
-	ExpectedProfitabilityPercentage float64              `json:"expectedProfitability_percentage" db:"expected_profitability_percentage"`
-	ExpectedProfitabilityAmount     float64              `json:"expectedProfitability_amount" db:"expected_profitability_amount"`
+	ExpectedProfitabilityPercentage float64              `json:"expectedProfitabilityPercentage" db:"expected_profitability_percentage"`
+	ExpectedProfitabilityAmount     float64              `json:"expectedProfitabilityAmount" db:"expected_profitability_amount"`
 	CreateTs                        time.Time            `json:"createTs" db:"create_ts"`
 }
 
@@ -197,12 +197,13 @@ func CreateOpportunityHandler(c *fiber.Ctx) error {
 }
 
 type opportunitiesSearchParams struct {
-	Search   string `query:"search"`
-	Page     uint64 `query:"page"`
-	PageSize uint64 `query:"pageSize"`
-	q        squirrel.SelectBuilder
-	SortBy   string `query:"sortBy"`
-	SortType string `query:"sortType"`
+	Search        string `query:"search"`
+	Page          uint64 `query:"page"`
+	PageSize      uint64 `query:"pageSize"`
+	q             squirrel.SelectBuilder
+	SortBy        string `query:"sortBy"`
+	SortType      string `query:"sortType"`
+	OpportunityID config.ObfuscatedInt
 }
 
 func (s *opportunitiesSearchParams) Apply() {
@@ -229,6 +230,11 @@ func (s *opportunitiesSearchParams) Apply() {
 	).LeftJoin("statuses s on s.code = o.status_code").Columns(
 		"s.name as status_name",
 	)
+
+	if !s.OpportunityID.IsEmpty() {
+		s.q = s.q.Where("o.id = ?", s.OpportunityID)
+	}
+
 	if len(s.Search) > 0 {
 		search := "%" + s.Search + "%"
 		s.q = s.q.Where(squirrel.Or{
@@ -289,8 +295,24 @@ func (s *opportunitiesSearchParams) GetData(ctx context.Context) ([]OpportunityD
 	s.q = s.q.Offset(offset)
 	s.q = s.q.Limit(s.PageSize)
 
-	sql, _, _ := s.q.ToSql()
-	fmt.Println(sql)
+	r, err := pgdb.QbQuery(ctx, s.q)
+	if err != nil {
+		return nil, err
+	}
+	opportunities := make([]OpportunityDetail, 0)
+	for r.Next() {
+		var u OpportunityDetail
+		err := pgxscan.ScanRow(&u, r)
+		if err != nil {
+			return nil, err
+		}
+		opportunities = append(opportunities, u)
+	}
+	return opportunities, nil
+}
+
+func (s *opportunitiesSearchParams) GetSingle(ctx context.Context) ([]OpportunityDetail, error) {
+	s.q = s.q.Limit(1)
 
 	r, err := pgdb.QbQuery(ctx, s.q)
 	if err != nil {
@@ -307,6 +329,7 @@ func (s *opportunitiesSearchParams) GetData(ctx context.Context) ([]OpportunityD
 	}
 	return opportunities, nil
 }
+
 func (s *opportunitiesSearchParams) GetCount(ctx context.Context) (cnt int, err error) {
 	s.q = s.q.
 		RemoveColumns().
@@ -342,4 +365,32 @@ func ListOpportunitiesHandler(c *fiber.Ctx) (err error) {
 	}
 
 	return utils.FiberJSONWrap(c, data, count)
+}
+
+func OpportunityDetailHandler(c *fiber.Ctx) (err error) {
+	ctx := c.Context()
+	var s opportunitiesSearchParams
+	err = c.QueryParser(&s)
+	if err != nil {
+		return errs.ErrBadParameter().WithDetail(err)
+	}
+
+	if opportunityID := c.Params("opportunityID"); len(opportunityID) > 0 {
+		err = s.OpportunityID.Parse(opportunityID)
+		if err != nil {
+			return errs.ErrBadParameter().WithMessage("invalid path :opportunityID parameter")
+		}
+	} else {
+		return errs.ErrBadParameter().WithMessage("invalid path :opportunityID parameter")
+	}
+
+	s.Search = ""
+	s.Apply()
+
+	data, err := s.GetSingle(ctx)
+	if err != nil {
+		return errs.ErrServerError().WithDetail(err)
+	}
+
+	return utils.FiberJSONWrap(c, data)
 }
