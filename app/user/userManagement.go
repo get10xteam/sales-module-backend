@@ -2,7 +2,6 @@ package user
 
 import (
 	"context"
-	"fmt"
 
 	"github.com/Masterminds/squirrel"
 	"github.com/get10xteam/sales-module-backend/errs"
@@ -108,27 +107,12 @@ func (usq *UserSearchQuery) GetData(ctx context.Context) ([]*User, error) {
 	}
 
 	offset := usq.PageSize * (usq.Page - 1)
-	usq.q = usq.q.Offset(offset)
-	usq.q = usq.q.Limit(usq.PageSize)
-	sql, _, _ := usq.q.ToSql()
-	fmt.Println(sql)
-
-	r, err := pgdb.QbQuery(ctx, usq.q)
+	q := usq.q.Offset(offset).Limit(usq.PageSize)
+	r, err := pgdb.QbQuery(ctx, q)
 	if err != nil {
 		return nil, err
 	}
 	defer r.Close()
-
-	// users := []*User{}
-
-	// for r.Next() {
-	// 	var u User
-	// 	err = pgxscan.ScanRow(&u, r)
-	// 	if err != nil {
-	// 		return nil, err
-	// 	}
-	// 	users = append(users, &u)
-	// }
 
 	users, err := pgx.CollectRows(r, func(row pgx.CollectableRow) (*User, error) {
 		var o User

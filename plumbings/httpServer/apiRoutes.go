@@ -13,17 +13,10 @@ func apiRoutes(apiRouter fiber.Router) {
 	authRoute := apiRouter.Group("auth")
 	{ // auth
 
-		// oath register
-		authRoute.Post("register", user.UserSignUpHandler)      // tested
-		authRoute.Get("register", user.UserSignUpVerifyHandler) // tested
-
-		// oath login
-		authRoute.Post("login", user.UserLoginHandler) // tested
-
-		// get profile
-		authRoute.Get("profile", user.MustAuthMiddleware, user.UserProfileHandler) // tested
-
-		// edit profile
+		authRoute.Post("register", user.UserSignUpHandler)
+		authRoute.Get("register", user.UserSignUpVerifyHandler)
+		authRoute.Post("login", user.UserLoginHandler)
+		authRoute.Get("profile", user.MustAuthMiddleware, user.UserProfileHandler)
 		authRoute.Put("profile",
 			user.MustAuthMiddleware,
 			storage.UploadHandlerFactory(&storage.UploadConfig{
@@ -35,32 +28,25 @@ func apiRoutes(apiRouter fiber.Router) {
 				PathIncludeHash:  true,
 			}),
 			user.ChangeProfileHandler,
-		) // tested for change name
-
-		// oath reset password
-		authRoute.Post("pwreset", user.UserResetPasswordStartHandler) // tested
-		authRoute.Get("pwreset", user.UserResetPasswordSubmitHandler) // tested
-		authRoute.Put("pwreset", user.UserResetPasswordSubmitHandler) // tested
-
-		// oath google
+		)
+		authRoute.Post("pwreset", user.UserResetPasswordStartHandler)
+		authRoute.Get("pwreset", user.UserResetPasswordSubmitHandler)
+		authRoute.Put("pwreset", user.UserResetPasswordSubmitHandler)
 		authRoute.Get("oauth/google", oauth.GoogleGetSignInUrlHandler)
 		authRoute.Post("oauth/google", user.UserOauthLoginGoogleHandler)
-
-		// oath microsoft
 		authRoute.Get("oauth/microsoft", oauth.MicrosoftGetSignInUrlHandler)
 		authRoute.Post("oauth/microsoft", user.UserOauthLoginMicrosoftHandler)
-
-		// oath logout
-		authRoute.Get("logout", user.UserLogoutHandler) // tested
+		authRoute.Get("logout", user.UserLogoutHandler)
 	}
 	users := apiRouter.Group("users")
 	{ // user
-		users.Get("", user.MustAuthMiddleware, user.ListUsersHandler) // tested
+		users.Get("", user.MustAuthMiddleware, user.ListUsersHandler)
 	}
 	opportunities := apiRouter.Group("opportunities")
 	{ // opportunity
-		opportunities.Post("", user.MustAuthMiddleware, opportunity.CreateOpportunityHandler)                                                        // tested
-		opportunities.Get("", user.MustAuthMiddleware, opportunity.ListOpportunitiesHandler)                                                         // tested
-		opportunities.Get("/:opportunityID", user.MustAuthMiddleware, opportunity.MustOpportunityIDMiddleware, opportunity.OpportunityDetailHandler) // tested
+		opportunities.Post("", user.MustAuthMiddleware, opportunity.CreateOpportunityHandler)
+		opportunities.Get("", user.MustAuthMiddleware, opportunity.ListOpportunitiesHandler)
+		opportunities.Get("/:opportunityID", user.MustAuthMiddleware, opportunity.MustOpportunityIDMiddleware, opportunity.OpportunityDetailHandler)
+		opportunities.Put("/:opportunityID", user.MustAuthMiddleware, opportunity.MustOpportunityIDMiddleware, opportunity.OpportunityEditHandlerHandler)
 	}
 }
