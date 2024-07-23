@@ -55,6 +55,12 @@ func (u *User) CreateToDB(ctx context.Context) (err error) {
 	if u.ProfileImgUrl != nil {
 		insertMap["profile_img_url"] = u.ProfileImgUrl
 	}
+	/* TODO
+		ParentId HARUS dikirim dari frontend, it's NOT optional, kecuali mau bikin TOP hierarchical level
+		Kalau ParentId nya nil, berarti dari frontend levelnya harus set level tertinggi (100)
+		Kalau bukan bikin level tertinggi (ParentId != nil), kita load parent user nya. Baca level nya dan obtain lower level.
+		Kalau lower level not exist, error out!
+	*/
 	// if level is empty set the level into highest level / lowest id in DB
 	if u.LevelId == nil {
 		rLevel, err := pgdb.QbQueryRow(ctx, pgdb.Qb.Select("id").From("levels").OrderBy("id asc").Limit(1))

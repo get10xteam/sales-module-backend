@@ -201,7 +201,9 @@ type opportunitiesSearchParams struct {
 	Page     uint64 `query:"page"`
 	PageSize uint64 `query:"pageSize"`
 	q        squirrel.SelectBuilder
+	// TODO rename to orderBy
 	SortBy   string `query:"sortBy"`
+	// TODO rename to orderDesc with type bool
 	SortType string `query:"sortType"`
 }
 
@@ -274,6 +276,7 @@ func (s *opportunitiesSearchParams) Apply() {
 
 type OpportunityDetail struct {
 	Opportunity
+	// TODO satuin di Opportunity aja, json nya omitEmpty
 	OwnerName    string `json:"ownerName" db:"owner_name"`
 	AssigneeName string `json:"assigneeName" db:"assignee_name"`
 	ClientName   string `json:"clientName" db:"client_name"`
@@ -289,6 +292,8 @@ func (s *opportunitiesSearchParams) GetData(ctx context.Context) ([]OpportunityD
 	s.q = s.q.Offset(offset)
 	s.q = s.q.Limit(s.PageSize)
 
+	// TODO before committing, search and eliminate for fmt.Println 
+	// or use logger.Debug() and search and eliminate
 	sql, _, _ := s.q.ToSql()
 	fmt.Println(sql)
 
@@ -296,7 +301,12 @@ func (s *opportunitiesSearchParams) GetData(ctx context.Context) ([]OpportunityD
 	if err != nil {
 		return nil, err
 	}
-	opportunities := make([]OpportunityDetail, 0)
+	opportunities, err := pgx.CollectRows[*Opportunity](r, func(row pgx.CollectableRow) (*Opportunity, error) {
+		var o Opportunity
+		row.Scan(/* TODO .... */)
+		return &o, err
+	})
+	/* opportunities := make([]OpportunityDetail, 0)
 	for r.Next() {
 		var u OpportunityDetail
 		err := pgxscan.ScanRow(&u, r)
@@ -304,7 +314,7 @@ func (s *opportunitiesSearchParams) GetData(ctx context.Context) ([]OpportunityD
 			return nil, err
 		}
 		opportunities = append(opportunities, u)
-	}
+	} */
 	return opportunities, nil
 }
 func (s *opportunitiesSearchParams) GetCount(ctx context.Context) (cnt int, err error) {

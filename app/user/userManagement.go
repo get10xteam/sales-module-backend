@@ -18,6 +18,7 @@ type UserSearchQuery struct {
 	IncludeRefs        bool                 `query:"includeRefs"`
 	ParentUserID       config.ObfuscatedInt `query:"parentUserID"`
 	q                  squirrel.SelectBuilder
+	// TODO should include pagination, add orderBy (name, email, createTs) and orderDesc
 }
 
 func (usq *UserSearchQuery) Apply() {
