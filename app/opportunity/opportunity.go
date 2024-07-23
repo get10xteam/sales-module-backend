@@ -3,8 +3,6 @@ package opportunity
 import (
 	"context"
 	"errors"
-	"fmt"
-	"sync"
 	"time"
 
 	"github.com/Masterminds/squirrel"
@@ -75,72 +73,25 @@ func (u *Opportunity) CreateToDB(ctx context.Context) error {
 	return r.Scan(&u.Id)
 }
 
-type CreateOpportunityPayload struct {
-	OwnerId         config.ObfuscatedInt `json:"ownerId,omitempty"`    // check users
-	AssigneeId      config.ObfuscatedInt `json:"assigneeId,omitempty"` // check users
-	ClientId        config.ObfuscatedInt `json:"clientId,omitempty"`   // check clients
-	StatusCode      string               `json:"statusCode,omitempty"` // check statuses
-	Name            string               `json:"name"`
-	Description     *string              `json:"description,omitempty"`
-	TalentBudget    float64              `json:"talentBudget,omitempty"`
-	NonTalentBudget float64              `json:"nonTalentBudget,omitempty"`
-	Revenue         float64              `json:"revenue,omitempty"`
-}
+func (o *Opportunity) Validate(ctx context.Context) (err error) {
 
-func (cop *CreateOpportunityPayload) Validate(ctx context.Context) *errs.Error {
-
-	if cop.Name == "" {
+	if o.Name == "" {
 		return errs.ErrBadParameter().WithMessage("name cannot be empty")
 	}
 
-	if cop.TalentBudget < 1 {
+	if o.TalentBudget < 1 {
 		return errs.ErrBadParameter().WithMessage("talent_budget must be larger than 0")
 	}
 
-	if cop.NonTalentBudget < 1 {
+	if o.NonTalentBudget < 1 {
 		return errs.ErrBadParameter().WithMessage("non_talent_budget must be larger than 0")
 	}
 
-	if cop.Revenue < 1 {
+	if o.Revenue < 1 {
 		return errs.ErrBadParameter().WithMessage("revenue must be larger than 0")
 	}
 
-	type fieldUsers struct {
-		id   config.ObfuscatedInt
-		name string
-		err  error
-	}
-
-	// check if cop.OwnerId and cop.AssigneeId is valid or not
-	var err error
-	var wg sync.WaitGroup
-	errsUserID := make(chan fieldUsers, 2)
-
-	for _, field := range []fieldUsers{{id: cop.OwnerId, name: "owner_id"}, {id: cop.AssigneeId, name: "assignee_id"}} {
-		wg.Add(1)
-		go func(field fieldUsers) {
-			defer wg.Done()
-			_, err = user.UserById(ctx, field.id)
-			if err != nil {
-				field.err = err
-				errsUserID <- field
-			}
-		}(field)
-	}
-
-	wg.Wait()
-	close(errsUserID)
-
-	errUserDetail, errWhenGetUser := <-errsUserID
-	if errWhenGetUser {
-		if errors.Is(errUserDetail.err, pgx.ErrNoRows) {
-			return errs.ErrNotExist().WithMessage(fmt.Sprintf("cannot find %s", errUserDetail.name))
-		}
-
-		return errs.ErrServerError().WithDetail(err)
-	}
-
-	_, err = client.ClientById(ctx, cop.ClientId)
+	_, err = client.ClientById(ctx, o.ClientId)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return errs.ErrNotExist().WithMessage("cannot find client_id")
@@ -149,7 +100,7 @@ func (cop *CreateOpportunityPayload) Validate(ctx context.Context) *errs.Error {
 		return errs.ErrServerError().WithDetail(err)
 	}
 
-	_, err = status.StatusByCode(ctx, cop.StatusCode)
+	_, err = status.StatusByCode(ctx, o.StatusCode)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return errs.ErrNotExist().WithMessage("cannot find status_code")
@@ -158,44 +109,32 @@ func (cop *CreateOpportunityPayload) Validate(ctx context.Context) *errs.Error {
 		return errs.ErrServerError().WithDetail(err)
 	}
 
-	return nil
+	return
 }
 
-// for testing purposes
-// INSERT INTO clients (id, "name", logo_url) VALUES(1, 'client test', NULL);
-// INSERT INTO statuses (code, "name", description) VALUES('DRAFT', 'draft', 'drafting mode', now());
-
 func CreateOpportunityHandler(c *fiber.Ctx) error {
-	opportunityReq := CreateOpportunityPayload{}
-	err := c.BodyParser(&opportunityReq)
+	o := Opportunity{}
+	err := c.BodyParser(&o)
 	if err != nil {
 		return errs.ErrBadParameter().WithMessage("Body not valid")
 	}
 
 	ctx := c.Context()
-	if err := opportunityReq.Validate(ctx); err != nil {
+	if err := o.Validate(ctx); err != nil {
 		return err
 	}
 
-	opportunity := Opportunity{
-		OwnerId:         opportunityReq.OwnerId,
-		AssigneeId:      opportunityReq.AssigneeId,
-		ClientId:        opportunityReq.ClientId,
-		StatusCode:      opportunityReq.StatusCode,
-		Name:            opportunityReq.Name,
-		Description:     opportunityReq.Description,
-		TalentBudget:    opportunityReq.TalentBudget,
-		NonTalentBudget: opportunityReq.NonTalentBudget,
-		Revenue:         opportunityReq.Revenue,
-	}
+	u := user.UserFromHttp(c)
+	o.OwnerId = u.Id
+	o.AssigneeId = u.Id
 
-	err = opportunity.CreateToDB(ctx)
+	err = o.CreateToDB(ctx)
 	if err != nil {
 		return errs.ErrServerError().WithDetail(err)
 	}
 
 	return utils.FiberJSONWrapWithStatusCreated(c, map[string]config.ObfuscatedInt{
-		"id": opportunity.Id,
+		"id": o.Id,
 	})
 }
 
@@ -210,29 +149,12 @@ type opportunitiesSearchParams struct {
 }
 
 func (s *opportunitiesSearchParams) Apply() {
-	s.q = pgdb.Qb.Select().From("opportunities o").Columns(
-		"o.id",
-		"o.owner_id",
-		"o.assignee_id",
-		"o.client_id",
-		"o.status_code",
-		"o.name",
-		"o.description",
-		"o.talent_budget",
-		"o.non_talent_budget",
-		"o.revenue",
-		"o.expected_profitability_percentage",
-		"o.expected_profitability_amount",
-		"o.create_ts",
-	).LeftJoin("users uo on uo.id = o.owner_id").Columns(
-		"uo.name as owner_name",
-	).LeftJoin("users ua on ua.id = o.assignee_id").Columns(
-		"ua.name as assignee_name",
-	).LeftJoin("clients c on c.id = o.client_id").Columns(
-		"c.name as client_name",
-	).LeftJoin("statuses s on s.code = o.status_code").Columns(
-		"s.name as status_name",
-	)
+	s.q = pgdb.Qb.Select().From("opportunities o").
+		LeftJoin("users uo on uo.id = o.owner_id").
+		LeftJoin("users ua on ua.id = o.assignee_id").
+		LeftJoin("clients c on c.id = o.client_id").
+		LeftJoin("statuses s on s.code = o.status_code")
+
 	if len(s.Search) > 0 {
 		search := "%" + s.Search + "%"
 		s.q = s.q.Where(squirrel.Or{
@@ -244,39 +166,6 @@ func (s *opportunitiesSearchParams) Apply() {
 			squirrel.Expr("s.name ilike ?", search),
 		})
 	}
-
-	switch s.OrderBy {
-	case "createTs":
-		s.OrderBy = "o.create_ts"
-	case "name":
-		s.OrderBy = "o.name"
-	case "ownerName":
-		s.OrderBy = "uo.name"
-	case "assigneeName":
-		s.OrderBy = "ua.name"
-	case "clientName":
-		s.OrderBy = "c.name"
-	case "statusName":
-		s.OrderBy = "s.name"
-	default:
-		s.OrderBy = "o.id"
-	}
-
-	orderClause := s.OrderBy
-	if s.OrderDesc {
-		orderClause = orderClause + " desc"
-	} else {
-		orderClause = orderClause + " asc"
-	}
-
-	s.q = s.q.OrderBy(orderClause).GroupBy(
-		"o.id",
-		"o.name",
-		"uo.name",
-		"ua.name",
-		"c.name",
-		"s.name",
-	)
 }
 
 func (s *opportunitiesSearchParams) scanFullColumns(r pgx.Rows, o *Opportunity) error {
@@ -311,10 +200,50 @@ func (s *opportunitiesSearchParams) GetData(ctx context.Context) ([]*Opportunity
 	}
 
 	offset := s.PageSize * (s.Page - 1)
-	s.q = s.q.Offset(offset)
-	s.q = s.q.Limit(s.PageSize)
 
-	r, err := pgdb.QbQuery(ctx, s.q)
+	var orderBy string
+	switch s.OrderBy {
+	case "createTs":
+		orderBy = "o.create_ts"
+	case "name":
+		orderBy = "o.name"
+	case "ownerName":
+		orderBy = "uo.name"
+	case "assigneeName":
+		orderBy = "ua.name"
+	case "clientName":
+		orderBy = "c.name"
+	case "statusName":
+		orderBy = "s.name"
+	default:
+		orderBy = "o.id"
+	}
+
+	if s.OrderDesc {
+		orderBy += " desc"
+	}
+
+	q := s.q.Columns(
+		"o.id",
+		"o.owner_id",
+		"o.assignee_id",
+		"o.client_id",
+		"o.status_code",
+		"o.name",
+		"o.description",
+		"o.talent_budget",
+		"o.non_talent_budget",
+		"o.revenue",
+		"o.expected_profitability_percentage",
+		"o.expected_profitability_amount",
+		"o.create_ts",
+		"uo.name as owner_name",
+		"ua.name as assignee_name",
+		"c.name as client_name",
+		"s.name as status_name",
+	).OrderBy(orderBy).Offset(offset).Limit(s.PageSize)
+
+	r, err := pgdb.QbQuery(ctx, q)
 	if err != nil {
 		return nil, err
 	}
@@ -361,12 +290,8 @@ func (s *opportunitiesSearchParams) GetSingle(ctx context.Context) (*Opportunity
 }
 
 func (s *opportunitiesSearchParams) GetCount(ctx context.Context) (cnt int, err error) {
-	s.q = s.q.
-		RemoveColumns().
-		RemoveLimit().
-		RemoveOffset().
-		Column("count(1) as count")
-	r, err := pgdb.QbQueryRow(ctx, s.q)
+	q := s.q.Column("count(1) as count")
+	r, err := pgdb.QbQueryRow(ctx, q)
 	if err != nil {
 		return
 	}
