@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/get10xteam/sales-module-backend/errs"
+	"github.com/get10xteam/sales-module-backend/plumbings/config"
 	"github.com/get10xteam/sales-module-backend/plumbings/oauth"
 	"github.com/get10xteam/sales-module-backend/plumbings/utils"
 
@@ -78,9 +79,10 @@ PROCEED:
 }
 
 type userSignUpPayload struct {
-	Email    string `json:"email,omitempty"`
-	Password string `json:"password,omitempty"`
-	Name     string `json:"name,omitempty"`
+	Email    string               `json:"email,omitempty"`
+	Password string               `json:"password,omitempty"`
+	Name     string               `json:"name,omitempty"`
+	ParentId config.ObfuscatedInt `json:"parentID,omitempty"`
 }
 
 func UserSignUpHandler(c *fiber.Ctx) (err error) {
@@ -156,11 +158,13 @@ PROCEED:
 	if err != nil {
 		return errs.ErrServerError().WithDetail(err)
 	}
+
 	u := User{
 		EmailConfirmed: true,
 		Email:          s.Email,
 		Name:           &s.Name,
 		Password:       &s.Password,
+		ParentId:       &s.ParentId,
 	}
 	err = u.CreateToDB(ctx)
 	if err != nil {

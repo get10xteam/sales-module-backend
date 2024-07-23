@@ -33,8 +33,8 @@ type User struct {
 	DeactivatedTs  *time.Time           `json:"deactivatedTs,omitempty" db:"deactivated_ts"`
 	LevelId        *int                 `json:"levelId" db:"level_id"`
 	// only appear when IncludeRefs is true
-	ParentId   *int    `json:"parentId,omitempty" db:"parent_id"`
-	ParentName *string `json:"parentName,omitempty" db:"parent_name"`
+	ParentId   *config.ObfuscatedInt `json:"parentId,omitempty" db:"parent_id"`
+	ParentName *string               `json:"parentName,omitempty" db:"parent_name"`
 }
 
 // level id on created user must be calculated based on the next level
@@ -56,23 +56,53 @@ func (u *User) CreateToDB(ctx context.Context) (err error) {
 		insertMap["profile_img_url"] = u.ProfileImgUrl
 	}
 	/* TODO
-		ParentId HARUS dikirim dari frontend, it's NOT optional, kecuali mau bikin TOP hierarchical level
-		Kalau ParentId nya nil, berarti dari frontend levelnya harus set level tertinggi (100)
-		Kalau bukan bikin level tertinggi (ParentId != nil), kita load parent user nya. Baca level nya dan obtain lower level.
-		Kalau lower level not exist, error out!
+	ParentId HARUS dikirim dari frontend, it's NOT optional, kecuali mau bikin TOP hierarchical level
+	Kalau ParentId nya nil, berarti dari frontend levelnya harus set level tertinggi (100)
+	Kalau bukan bikin level tertinggi (ParentId != nil), kita load parent user nya. Baca level nya dan obtain lower level.
+	Kalau lower level not exist, error out!
 	*/
-	// if level is empty set the level into highest level / lowest id in DB
-	if u.LevelId == nil {
+
+	if u.ParentId.IsEmpty() {
+		// if parent id is exist, ambil data user nya lalu search data lower levelnya, kalo kosong kasih error
+		rLevel, err := pgdb.QbQueryRow(ctx, pgdb.Qb.Select("level_id").From("users").Where("id = ?", u.ParentId))
+		if err != nil {
+			return err
+		}
+
+		var parentLevelID int
+		err = rLevel.Scan(&parentLevelID)
+		if err != nil {
+			return err
+		}
+
+		rNextLevel := pgdb.QueryRow(ctx, `SELECT next_level FROM ( SELECT id, lead(id) OVER w as next_level FROM levels l WINDOW w AS (ORDER BY id) ) s WHERE id = $1`, parentLevelID)
+		err = rNextLevel.Scan(&u.LevelId)
+		if err != nil {
+			return err
+		}
+
+		if u.LevelId == nil {
+			return errors.New("error when obtaining level")
+		}
+
+		insertMap["level_id"] = u.LevelId
+		insertMap["parent_id"] = u.ParentId
+
+	} else {
+		// if parent id is empty set into highest level in db
 		rLevel, err := pgdb.QbQueryRow(ctx, pgdb.Qb.Select("id").From("levels").OrderBy("id asc").Limit(1))
 		if err != nil {
 			return err
 		}
+
 		err = rLevel.Scan(&u.LevelId)
 		if err != nil {
 			return err
 		}
+
 		insertMap["level_id"] = u.LevelId
 	}
+
 	r, err := pgdb.QbQueryRow(ctx, pgdb.Qb.Insert("users").SetMap(insertMap).Suffix("returning id"))
 	if err != nil {
 		return

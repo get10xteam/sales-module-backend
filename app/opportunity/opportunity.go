@@ -8,7 +8,6 @@ import (
 	"time"
 
 	"github.com/Masterminds/squirrel"
-	"github.com/georgysavva/scany/v2/pgxscan"
 	"github.com/get10xteam/sales-module-backend/app/client"
 	"github.com/get10xteam/sales-module-backend/app/status"
 	"github.com/get10xteam/sales-module-backend/app/user"
@@ -46,9 +45,13 @@ type Opportunity struct {
 	TalentBudget                    float64              `json:"talentBudget" db:"talent_budget"`
 	NonTalentBudget                 float64              `json:"nonTalentBudget" db:"non_talent_budget"`
 	Revenue                         float64              `json:"revenue" db:"revenue"`
-	ExpectedProfitabilityPercentage float64              `json:"expectedProfitability_percentage" db:"expected_profitability_percentage"`
-	ExpectedProfitabilityAmount     float64              `json:"expectedProfitability_amount" db:"expected_profitability_amount"`
+	ExpectedProfitabilityPercentage float64              `json:"expectedProfitabilityPercentage" db:"expected_profitability_percentage"`
+	ExpectedProfitabilityAmount     float64              `json:"expectedProfitabilityAmount" db:"expected_profitability_amount"`
 	CreateTs                        time.Time            `json:"createTs" db:"create_ts"`
+	OwnerName                       string               `json:"ownerName,omitempty" db:"owner_name"`       // join table user
+	AssigneeName                    string               `json:"assigneeName,omitempty" db:"assignee_name"` // join table user
+	ClientName                      string               `json:"clientName,omitempty" db:"client_name"`     // join table client
+	StatusName                      string               `json:"statusName,omitempty" db:"status_name"`     // join table status
 }
 
 func (u *Opportunity) CreateToDB(ctx context.Context) error {
@@ -197,14 +200,13 @@ func CreateOpportunityHandler(c *fiber.Ctx) error {
 }
 
 type opportunitiesSearchParams struct {
-	Search   string `query:"search"`
-	Page     uint64 `query:"page"`
-	PageSize uint64 `query:"pageSize"`
-	q        squirrel.SelectBuilder
-	// TODO rename to orderBy
-	SortBy   string `query:"sortBy"`
-	// TODO rename to orderDesc with type bool
-	SortType string `query:"sortType"`
+	Search        string `query:"search"`
+	Page          uint64 `query:"page"`
+	PageSize      uint64 `query:"pageSize"`
+	q             squirrel.SelectBuilder
+	OrderBy       string `query:"orderBy"`
+	OrderDesc     bool   `query:"orderDesc"`
+	OpportunityID config.ObfuscatedInt
 }
 
 func (s *opportunitiesSearchParams) Apply() {
@@ -243,28 +245,31 @@ func (s *opportunitiesSearchParams) Apply() {
 		})
 	}
 
-	switch s.SortBy {
+	switch s.OrderBy {
 	case "createTs":
-		s.SortBy = "o.create_ts"
+		s.OrderBy = "o.create_ts"
 	case "name":
-		s.SortBy = "o.name"
+		s.OrderBy = "o.name"
 	case "ownerName":
-		s.SortBy = "uo.name"
+		s.OrderBy = "uo.name"
 	case "assigneeName":
-		s.SortBy = "ua.name"
+		s.OrderBy = "ua.name"
 	case "clientName":
-		s.SortBy = "c.name"
+		s.OrderBy = "c.name"
 	case "statusName":
-		s.SortBy = "s.name"
+		s.OrderBy = "s.name"
 	default:
-		s.SortBy = "o.id"
+		s.OrderBy = "o.id"
 	}
 
-	if s.SortType == "" {
-		s.SortType = "desc"
+	orderClause := s.OrderBy
+	if s.OrderDesc {
+		orderClause = orderClause + " desc"
+	} else {
+		orderClause = orderClause + " asc"
 	}
 
-	s.q = s.q.OrderBy(fmt.Sprintf("%s %s", s.SortBy, s.SortType)).GroupBy(
+	s.q = s.q.OrderBy(orderClause).GroupBy(
 		"o.id",
 		"o.name",
 		"uo.name",
@@ -274,49 +279,87 @@ func (s *opportunitiesSearchParams) Apply() {
 	)
 }
 
-type OpportunityDetail struct {
-	Opportunity
-	// TODO satuin di Opportunity aja, json nya omitEmpty
-	OwnerName    string `json:"ownerName" db:"owner_name"`
-	AssigneeName string `json:"assigneeName" db:"assignee_name"`
-	ClientName   string `json:"clientName" db:"client_name"`
-	StatusName   string `json:"statusName" db:"status_name"`
+func (s *opportunitiesSearchParams) scanFullColumns(r pgx.Rows, o *Opportunity) error {
+	return r.Scan(
+		&o.Id,
+		&o.OwnerId,
+		&o.AssigneeId,
+		&o.ClientId,
+		&o.StatusCode,
+		&o.Name,
+		&o.Description,
+		&o.TalentBudget,
+		&o.NonTalentBudget,
+		&o.Revenue,
+		&o.ExpectedProfitabilityPercentage,
+		&o.ExpectedProfitabilityAmount,
+		&o.CreateTs,
+		&o.OwnerName,
+		&o.AssigneeName,
+		&o.ClientName,
+		&o.StatusName,
+	)
 }
 
-func (s *opportunitiesSearchParams) GetData(ctx context.Context) ([]OpportunityDetail, error) {
+func (s *opportunitiesSearchParams) GetData(ctx context.Context) ([]*Opportunity, error) {
 	if s.PageSize == 0 {
 		s.PageSize = 20
+	}
+
+	if s.Page == 0 {
+		s.Page = 1
 	}
 
 	offset := s.PageSize * (s.Page - 1)
 	s.q = s.q.Offset(offset)
 	s.q = s.q.Limit(s.PageSize)
 
-	// TODO before committing, search and eliminate for fmt.Println 
-	// or use logger.Debug() and search and eliminate
-	sql, _, _ := s.q.ToSql()
-	fmt.Println(sql)
+	r, err := pgdb.QbQuery(ctx, s.q)
+	if err != nil {
+		return nil, err
+	}
+	opportunities, err := pgx.CollectRows(r, func(row pgx.CollectableRow) (*Opportunity, error) {
+		var o Opportunity
+		err := s.scanFullColumns(r, &o)
+		if err != nil {
+			return nil, err
+		}
+
+		return &o, nil
+	})
+
+	if err != nil {
+		return nil, err
+	}
+
+	return opportunities, nil
+}
+
+func (s *opportunitiesSearchParams) GetSingle(ctx context.Context) (*Opportunity, error) {
+	s.q = s.q.Limit(1)
 
 	r, err := pgdb.QbQuery(ctx, s.q)
 	if err != nil {
 		return nil, err
 	}
-	opportunities, err := pgx.CollectRows[*Opportunity](r, func(row pgx.CollectableRow) (*Opportunity, error) {
+
+	opportunity, err := pgx.CollectOneRow(r, func(row pgx.CollectableRow) (*Opportunity, error) {
 		var o Opportunity
-		row.Scan(/* TODO .... */)
-		return &o, err
-	})
-	/* opportunities := make([]OpportunityDetail, 0)
-	for r.Next() {
-		var u OpportunityDetail
-		err := pgxscan.ScanRow(&u, r)
+		err := s.scanFullColumns(r, &o)
 		if err != nil {
 			return nil, err
 		}
-		opportunities = append(opportunities, u)
-	} */
-	return opportunities, nil
+
+		return &o, nil
+	})
+
+	if err != nil {
+		return nil, err
+	}
+
+	return opportunity, nil
 }
+
 func (s *opportunitiesSearchParams) GetCount(ctx context.Context) (cnt int, err error) {
 	s.q = s.q.
 		RemoveColumns().
@@ -352,4 +395,54 @@ func ListOpportunitiesHandler(c *fiber.Ctx) (err error) {
 	}
 
 	return utils.FiberJSONWrap(c, data, count)
+}
+
+const opportunityLocalsKey = "localsOpportunity"
+
+// Should only be called after MustAuthMiddleware.
+func MustOpportunityIDMiddleware(c *fiber.Ctx) error {
+
+	var id config.ObfuscatedInt
+
+	opportunityID := c.Params("opportunityID")
+	if opportunityID == "" {
+		return errs.ErrBadParameter().WithMessage("invalid path :opportunityID parameter")
+	}
+
+	err := id.Parse(opportunityID)
+	if err != nil {
+		return errs.ErrBadParameter().WithMessage("invalid path :opportunityID parameter")
+	}
+
+	c.Locals(opportunityLocalsKey, id)
+
+	return c.Next()
+}
+
+func OpportunityDetailHandler(c *fiber.Ctx) (err error) {
+	ctx := c.Context()
+	var s opportunitiesSearchParams
+	err = c.QueryParser(&s)
+	if err != nil {
+		return errs.ErrBadParameter().WithDetail(err)
+	}
+
+	opportunityID, ok := c.Locals(opportunityLocalsKey).(config.ObfuscatedInt)
+	if !ok {
+		return errs.ErrBadParameter().WithMessage("invalid path :opportunityID parameter")
+	}
+
+	s.OpportunityID = opportunityID
+	s.Search = ""
+	s.Apply()
+
+	data, err := s.GetSingle(ctx)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return errs.ErrNotExist().WithDetail(err)
+		}
+		return errs.ErrServerError().WithDetail(err)
+	}
+
+	return utils.FiberJSONWrap(c, data)
 }

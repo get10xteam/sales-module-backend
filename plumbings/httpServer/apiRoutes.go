@@ -55,11 +55,12 @@ func apiRoutes(apiRouter fiber.Router) {
 	}
 	users := apiRouter.Group("users")
 	{ // user
-		users.Get("dropdown", user.MustAuthMiddleware, user.UserHierarchyDropdownHandler) // tested
+		users.Get("", user.MustAuthMiddleware, user.ListUsersHandler) // tested
 	}
 	opportunities := apiRouter.Group("opportunities")
 	{ // opportunity
-		opportunities.Post("", user.MustAuthMiddleware, opportunity.CreateOpportunityHandler) // tested
-		opportunities.Get("", user.MustAuthMiddleware, opportunity.ListOpportunitiesHandler)  // tested
+		opportunities.Post("", user.MustAuthMiddleware, opportunity.CreateOpportunityHandler)                                                        // tested
+		opportunities.Get("", user.MustAuthMiddleware, opportunity.ListOpportunitiesHandler)                                                         // tested
+		opportunities.Get("/:opportunityID", user.MustAuthMiddleware, opportunity.MustOpportunityIDMiddleware, opportunity.OpportunityDetailHandler) // tested
 	}
 }

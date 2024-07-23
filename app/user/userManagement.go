@@ -2,13 +2,14 @@ package user
 
 import (
 	"context"
+	"fmt"
 
 	"github.com/Masterminds/squirrel"
-	"github.com/georgysavva/scany/v2/pgxscan"
 	"github.com/get10xteam/sales-module-backend/errs"
 	"github.com/get10xteam/sales-module-backend/plumbings/config"
 	"github.com/get10xteam/sales-module-backend/plumbings/utils"
 	"github.com/gofiber/fiber/v2"
+	"github.com/jackc/pgx/v5"
 	"gitlab.com/intalko/gosuite/pgdb"
 )
 
@@ -17,8 +18,11 @@ type UserSearchQuery struct {
 	IncludeDeactivated bool                 `query:"includeDeactivated"`
 	IncludeRefs        bool                 `query:"includeRefs"`
 	ParentUserID       config.ObfuscatedInt `query:"parentUserID"`
+	Page               uint64               `query:"page"`
+	PageSize           uint64               `query:"pageSize"`
 	q                  squirrel.SelectBuilder
-	// TODO should include pagination, add orderBy (name, email, createTs) and orderDesc
+	OrderBy            string `query:"orderBy"`
+	OrderDesc          bool   `query:"orderDesc"`
 }
 
 func (usq *UserSearchQuery) Apply() {
@@ -67,30 +71,93 @@ func (usq *UserSearchQuery) Apply() {
 	if usq.IncludeDeactivated {
 		usq.q = usq.q.Where("u.deactivated_ts is not null").Columns("u.deactivated_ts")
 	}
+
+	switch usq.OrderBy {
+	case "name":
+		usq.OrderBy = "u.name"
+	case "email":
+		usq.OrderBy = "u.email"
+	case "createTs":
+		usq.OrderBy = "u.create_ts"
+	default:
+		usq.OrderBy = "u.id"
+	}
+
+	orderClause := usq.OrderBy
+	if usq.OrderDesc {
+		orderClause = orderClause + " desc"
+	} else {
+		orderClause = orderClause + " asc"
+	}
+
+	usq.q = usq.q.OrderBy(orderClause).GroupBy(
+		"u.id",
+		"u.name",
+		"u.name",
+		"u.create_ts",
+	)
 }
 
 func (usq *UserSearchQuery) GetData(ctx context.Context) ([]*User, error) {
+	if usq.PageSize == 0 {
+		usq.PageSize = 20
+	}
+
+	if usq.Page == 0 {
+		usq.Page = 1
+	}
+
+	offset := usq.PageSize * (usq.Page - 1)
+	usq.q = usq.q.Offset(offset)
+	usq.q = usq.q.Limit(usq.PageSize)
+	sql, _, _ := usq.q.ToSql()
+	fmt.Println(sql)
+
 	r, err := pgdb.QbQuery(ctx, usq.q)
 	if err != nil {
 		return nil, err
 	}
 	defer r.Close()
 
-	users := []*User{}
+	// users := []*User{}
 
-	for r.Next() {
-		var u User
-		err = pgxscan.ScanRow(&u, r)
+	// for r.Next() {
+	// 	var u User
+	// 	err = pgxscan.ScanRow(&u, r)
+	// 	if err != nil {
+	// 		return nil, err
+	// 	}
+	// 	users = append(users, &u)
+	// }
+
+	users, err := pgx.CollectRows(r, func(row pgx.CollectableRow) (*User, error) {
+		var o User
+		err := usq.scanSimple(r, &o)
 		if err != nil {
 			return nil, err
 		}
-		users = append(users, &u)
+
+		return &o, nil
+	})
+
+	if err != nil {
+		return nil, err
 	}
 
 	return users, nil
 }
 
-func UserHierarchyDropdownHandler(c *fiber.Ctx) (err error) {
+func (s *UserSearchQuery) scanSimple(r pgx.Rows, u *User) error {
+	return r.Scan(
+		&u.Id,
+		&u.Name,
+		&u.Email,
+		&u.CreateTs,
+		&u.LevelId,
+	)
+}
+
+func ListUsersHandler(c *fiber.Ctx) (err error) {
 
 	u := UserFromHttp(c)
 
