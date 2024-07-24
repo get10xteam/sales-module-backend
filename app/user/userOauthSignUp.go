@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/get10xteam/sales-module-backend/errs"
+	"github.com/get10xteam/sales-module-backend/plumbings/config"
 	"github.com/get10xteam/sales-module-backend/plumbings/oauth"
 	"github.com/get10xteam/sales-module-backend/plumbings/utils"
 
@@ -31,16 +32,16 @@ func UserOauthLoginGoogleHandler(c *fiber.Ctx) (err error) {
 			}
 			err = u.CreateToDB(ctx)
 			if err != nil {
-				return errs.ErrServerError().WithDetail(err).WithFiberStatus(c)
+				return errs.ErrServerError().WithDetail(err)
 			}
 			goto PROCEED
 		}
-		return errs.ErrServerError().WithDetail(err).WithFiberStatus(c)
+		return errs.ErrServerError().WithDetail(err)
 	}
 PROCEED:
 	s, err := u.NewSession(ctx, net.ParseIP(c.IP()), string(c.Context().UserAgent()), defaultSessionExpirationMinutes)
 	if err != nil {
-		return errs.ErrServerError().WithDetail(err).WithFiberStatus(c)
+		return errs.ErrServerError().WithDetail(err)
 	}
 	s.setHTTP(c)
 
@@ -61,16 +62,16 @@ func UserOauthLoginMicrosoftHandler(c *fiber.Ctx) (err error) {
 			}
 			err = u.CreateToDB(ctx)
 			if err != nil {
-				return errs.ErrServerError().WithDetail(err).WithFiberStatus(c)
+				return errs.ErrServerError().WithDetail(err)
 			}
 			goto PROCEED
 		}
-		return errs.ErrServerError().WithDetail(err).WithFiberStatus(c)
+		return errs.ErrServerError().WithDetail(err)
 	}
 PROCEED:
 	s, err := u.NewSession(ctx, net.ParseIP(c.IP()), string(c.Context().UserAgent()), defaultSessionExpirationMinutes)
 	if err != nil {
-		return errs.ErrServerError().WithDetail(err).WithFiberStatus(c)
+		return errs.ErrServerError().WithDetail(err)
 	}
 	s.setHTTP(c)
 
@@ -78,9 +79,11 @@ PROCEED:
 }
 
 type userSignUpPayload struct {
-	Email    string `json:"email,omitempty"`
-	Password string `json:"password,omitempty"`
-	Name     string `json:"name,omitempty"`
+	Email    string               `json:"email,omitempty"`
+	Password string               `json:"password,omitempty"`
+	Name     string               `json:"name,omitempty"`
+	ParentId config.ObfuscatedInt `json:"parentID,omitempty"`
+	LevelId  *int                 `json:"levelId"`
 }
 
 func UserSignUpHandler(c *fiber.Ctx) (err error) {
@@ -88,20 +91,20 @@ func UserSignUpHandler(c *fiber.Ctx) (err error) {
 	var s userSignUpPayload
 	err = c.BodyParser(&s)
 	if err != nil {
-		return errs.ErrBadParameter().WithDetail(err).WithFiberStatus(c)
+		return errs.ErrBadParameter().WithDetail(err)
 	}
 	_, err = stdMail.ParseAddress(s.Email)
 	if err != nil {
-		return errs.ErrBadParameter().WithDetail(err).WithMessage("Invalid Email Address").WithFiberStatus(c)
+		return errs.ErrBadParameter().WithDetail(err).WithMessage("Invalid Email Address")
 	}
 	_, err = UserByEmail(ctx, s.Email)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			goto PROCEED
 		}
-		return errs.ErrServerError().WithDetail(err).WithFiberStatus(c)
+		return errs.ErrServerError().WithDetail(err)
 	} else {
-		return errs.ErrPreexist().WithFiberStatus(c)
+		return errs.ErrPreexist()
 	}
 PROCEED:
 	if len(s.Name) < 2 {
@@ -109,11 +112,11 @@ PROCEED:
 	}
 	s.Password, err = utils.CheckAndHashPassword(s.Password)
 	if err != nil {
-		return errs.ErrServerError().WithDetail(err).WithFiberStatus(c)
+		return errs.ErrServerError().WithDetail(err)
 	}
 	_, err = SendUserEmailVerification(ctx, UserEmailVerificationPurpose_SignUpVerify, s.Email, nil, s)
 	if err != nil {
-		return errs.ErrServerError().WithDetail(err).WithFiberStatus(c)
+		return errs.ErrServerError().WithDetail(err)
 	}
 	return utils.FiberJSONWrap(c, s.Email)
 }
@@ -122,49 +125,52 @@ func UserSignUpVerifyHandler(c *fiber.Ctx) (err error) {
 	token := c.Query("token")
 	verifyId, err := b64uuid.Parse(token)
 	if err != nil || verifyId.IsEmpty() {
-		return errs.ErrBadParameter().WithMessage("Verification token not found").WithFiberStatus(c)
+		return errs.ErrBadParameter().WithMessage("Verification token not found")
 	}
 	v, err := UserEmailVerificationByPurposeId(ctx, UserEmailVerificationPurpose_SignUpVerify, verifyId)
 	if err != nil {
 		if errs.Is(err, pgx.ErrNoRows) {
-			return errs.ErrNotExist().WithMessage("Verification token not found").WithFiberStatus(c)
+			return errs.ErrNotExist().WithMessage("Verification token not found")
 		}
-		return errs.ErrServerError().WithDetail(err).WithFiberStatus(c)
+		return errs.ErrServerError().WithDetail(err)
 	}
 	if v.ExpiryTs.Before(time.Now()) {
-		return errs.ErrBadParameter().WithMessage("Verification token has expired").WithFiberStatus(c)
+		return errs.ErrBadParameter().WithMessage("Verification token has expired")
 	}
 	if v.UsedTs != nil {
-		return errs.ErrBadParameter().WithMessage("Verification token has been used").WithFiberStatus(c)
+		return errs.ErrBadParameter().WithMessage("Verification token has been used")
 	}
 	var s userSignUpPayload
 	err = json.Unmarshal(v.Meta, &s)
 	if err != nil {
-		return errs.ErrServerError().WithDetail(err).WithFiberStatus(c)
+		return errs.ErrServerError().WithDetail(err)
 	}
 	_, err = UserByEmail(ctx, s.Email)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			goto PROCEED
 		}
-		return errs.ErrServerError().WithDetail(err).WithFiberStatus(c)
+		return errs.ErrServerError().WithDetail(err)
 	} else {
-		return errs.ErrPreexist().WithFiberStatus(c)
+		return errs.ErrPreexist()
 	}
 PROCEED:
 	err = v.MarkUsed(ctx)
 	if err != nil {
-		return errs.ErrServerError().WithDetail(err).WithFiberStatus(c)
+		return errs.ErrServerError().WithDetail(err)
 	}
+
 	u := User{
 		EmailConfirmed: true,
 		Email:          s.Email,
 		Name:           &s.Name,
 		Password:       &s.Password,
+		ParentId:       &s.ParentId,
+		LevelId:        s.LevelId,
 	}
 	err = u.CreateToDB(ctx)
 	if err != nil {
-		return errs.ErrServerError().WithDetail(err).WithFiberStatus(c)
+		return errs.ErrServerError().WithDetail(err)
 	}
 	return utils.FiberJSONWrap(c, s.Email)
 }

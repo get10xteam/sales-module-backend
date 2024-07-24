@@ -10,8 +10,8 @@ create table users (
     profile_img_url text,
     create_ts timestamptz not null default now(),
     level_id int references levels(id),
-    parent_id int references users(id)
-    -- add deactivatedts timestamptz column
+    parent_id int references users(id),
+    deactivated_ts timestamptz null
 );
 
 create table user_email_verifications (

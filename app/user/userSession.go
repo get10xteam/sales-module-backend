@@ -97,7 +97,7 @@ func (s *userSession) ensureRenewal(c *fiber.Ctx) (err error) {
 			const sql = "update user_sessions set expiry_ts = $2 where id = $1"
 			_, err = pgdb.Exec(ctx, sql, s.Id, nextExp)
 			if err != nil {
-				return errs.ErrServerError().WithDetail(err).WithFiberStatus(c)
+				return errs.ErrServerError().WithDetail(err)
 			}
 			s.ExpiryTs = &nextExp
 			s.setHTTP(c)
@@ -105,7 +105,7 @@ func (s *userSession) ensureRenewal(c *fiber.Ctx) (err error) {
 	}
 	if s.LogOutTs != nil {
 		s.setHTTP(c)
-		return errs.ErrUnauthenticated().WithFiberStatus(c)
+		return errs.ErrUnauthenticated()
 	}
 	return
 }

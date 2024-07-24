@@ -190,9 +190,9 @@ func errHandler(c *fiber.Ctx, err error) error {
 		return c.Status(http.StatusNotFound).JSON(errs.ErrRouteNotFound())
 	}
 	if appErr, ok := err.(*errs.Error); ok {
-		return c.JSON(appErr)
+		return c.Status(appErr.FiberStatus()).JSON(appErr)
 	}
-	return c.JSON(errs.ErrServerError().WithDetail(err))
+	return c.Status(http.StatusInternalServerError).JSON(errs.ErrServerError().WithDetail(err))
 }
 
 func Shutdown() error {
