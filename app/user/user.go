@@ -55,7 +55,7 @@ func (u *User) CreateToDB(ctx context.Context) (err error) {
 		insertMap["profile_img_url"] = u.ProfileImgUrl
 	}
 
-	if !u.ParentId.IsEmpty() {
+	if u.ParentId != nil && !u.ParentId.IsEmpty() {
 		var parentLevelID int
 		err = pgdb.QueryRow(ctx, "select level_id from users where id = $1", u.ParentId).Scan(&parentLevelID)
 		if err != nil {
@@ -81,11 +81,13 @@ func (u *User) CreateToDB(ctx context.Context) (err error) {
 			return
 		}
 
-		if u.LevelId != nil && *u.LevelId != topLevel {
-			return errs.ErrBadParameter().WithMessage("levelId not correct")
+		if u.LevelId != nil {
+			if *u.LevelId != topLevel {
+				return errs.ErrBadParameter().WithMessage("levelId not correct")
+			}
+			insertMap["level_id"] = topLevel
 		}
-
-		insertMap["level_id"] = u.LevelId
+		// IF level id not set will become tag owner
 	}
 
 	r, err := pgdb.QbQueryRow(ctx, pgdb.Qb.Insert("users").SetMap(insertMap).Suffix("returning id"))

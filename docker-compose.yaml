@@ -5,7 +5,7 @@ services:
     environment:
       POSTGRES_USER: get10x
       POSTGRES_PASSWORD: get10x
-      POSTGRES_DB: get10xproject
+      POSTGRES_DB: get10xproject-sales
     ports:
       - 5432:5432
     volumes:

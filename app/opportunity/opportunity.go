@@ -137,6 +137,7 @@ func (o *Opportunity) LoadFromDB(ctx context.Context) (err error) {
 	return
 }
 
+// UpdateToDB can only edit name, description, non_talent_budget, talent_budget, revenue
 func (o *Opportunity) UpdateToDB(ctx context.Context) (err error) {
 	if o.Id.IsEmpty() {
 		return errs.ErrBadParameter()
@@ -146,10 +147,6 @@ func (o *Opportunity) UpdateToDB(ctx context.Context) (err error) {
 	err = oldOpportunity.LoadFromDB(ctx)
 	if err != nil {
 		return
-	}
-
-	if o.AssigneeId != oldOpportunity.AssigneeId {
-		return errs.ErrUnauthorized().WithMessage("cannot authorize assignee_id")
 	}
 
 	updateMap := map[string]any{}
@@ -456,8 +453,25 @@ func OpportunityEditHandlerHandler(c *fiber.Ctx) (err error) {
 	}
 
 	u := user.UserFromHttp(c)
+
+	var s opportunitiesSearchParams
+	s.OpportunityID = opportunityID
+	s.Search = ""
+	s.Apply()
+
+	data, err := s.GetSingle(ctx)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return errs.ErrNotExist().WithDetail(err)
+		}
+		return errs.ErrServerError().WithDetail(err)
+	}
+
+	if u.Id != data.AssigneeId {
+		return errs.ErrUnauthorized().WithMessage("cannot authorize assignee_id")
+	}
+
 	o.Id = opportunityID
-	o.AssigneeId = u.Id
 
 	err = o.UpdateToDB(ctx)
 	if err != nil {

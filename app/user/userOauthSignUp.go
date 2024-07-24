@@ -83,6 +83,7 @@ type userSignUpPayload struct {
 	Password string               `json:"password,omitempty"`
 	Name     string               `json:"name,omitempty"`
 	ParentId config.ObfuscatedInt `json:"parentID,omitempty"`
+	LevelId  *int                 `json:"levelId"`
 }
 
 func UserSignUpHandler(c *fiber.Ctx) (err error) {
@@ -165,6 +166,7 @@ PROCEED:
 		Name:           &s.Name,
 		Password:       &s.Password,
 		ParentId:       &s.ParentId,
+		LevelId:        s.LevelId,
 	}
 	err = u.CreateToDB(ctx)
 	if err != nil {
