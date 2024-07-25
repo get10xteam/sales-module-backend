@@ -1,6 +1,7 @@
 package httpServer
 
 import (
+	"github.com/get10xteam/sales-module-backend/app/level"
 	"github.com/get10xteam/sales-module-backend/app/opportunity"
 	"github.com/get10xteam/sales-module-backend/app/user"
 	"github.com/get10xteam/sales-module-backend/plumbings/oauth"
@@ -48,5 +49,9 @@ func apiRoutes(apiRouter fiber.Router) {
 		opportunities.Get("", user.MustAuthMiddleware, opportunity.ListOpportunitiesHandler)
 		opportunities.Get("/:opportunityID", user.MustAuthMiddleware, opportunity.MustOpportunityIDMiddleware, opportunity.OpportunityDetailHandler)
 		opportunities.Put("/:opportunityID", user.MustAuthMiddleware, opportunity.MustOpportunityIDMiddleware, opportunity.OpportunityEditHandlerHandler)
+	}
+	levels := apiRouter.Group("levels")
+	{ // levels
+		levels.Get("", user.MustAuthMiddleware, level.ListLevelsHandler)
 	}
 }

@@ -1,75 +1,53 @@
-package status
+package level
 
 import (
 	"context"
 	"time"
 
-	"gitlab.com/intalko/gosuite/pgdb"
-
 	"github.com/Masterminds/squirrel"
-	"github.com/georgysavva/scany/v2/pgxscan"
 	"github.com/get10xteam/sales-module-backend/errs"
 	"github.com/get10xteam/sales-module-backend/plumbings/config"
 	"github.com/get10xteam/sales-module-backend/plumbings/utils"
-	"github.com/gofiber/fiber/v2"
 	"github.com/jackc/pgx/v5"
+	"gitlab.com/intalko/gosuite/pgdb"
+
+	"github.com/gofiber/fiber/v2"
 )
 
-type Status struct {
-	Code        *string   `json:"code,omitempty" db:"code"`
-	Description *string   `json:"description,omitempty" db:"description"`
-	CreateTs    time.Time `json:"createTs,omitempty" db:"create_ts"`
+type Level struct {
+	Id       config.ObfuscatedInt `json:"id" db:"id"`
+	Name     string               `json:"name" db:"name"`
+	CreateTs time.Time            `json:"createTs" db:"create_ts"`
 }
 
-func StatusByCode(ctx context.Context, code string, cols ...string) (*Status, error) {
-	if len(cols) == 0 {
-		cols = []string{"code"}
-	}
-
-	r, err := pgdb.QbQuery(ctx, pgdb.Qb.Select(cols...).From("statuses").Where("code = ?", code))
-	if err != nil {
-		return nil, err
-	}
-
-	u := &Status{}
-	err = pgxscan.ScanOne(u, r)
-	if err != nil {
-		return nil, err
-	}
-	return u, err
-}
-
-type StatusSearchParams struct {
+type levelsSearchParams struct {
 	Search    string `query:"search"`
 	Page      uint64 `query:"page"`
 	PageSize  uint64 `query:"pageSize"`
 	q         squirrel.SelectBuilder
 	OrderBy   string `query:"orderBy"`
 	OrderDesc bool   `query:"orderDesc"`
-	StatusID  config.ObfuscatedInt
+	LevelID   config.ObfuscatedInt
 }
 
-func (s *StatusSearchParams) Apply() {
-	s.q = pgdb.Qb.Select().From("statuses s")
+func (s *levelsSearchParams) Apply() {
+	s.q = pgdb.Qb.Select().From("levels l")
 
 	if len(s.Search) > 0 {
 		search := "%" + s.Search + "%"
-		s.q = s.q.Where(squirrel.Or{
-			squirrel.Expr("s.name ilike ?", search),
-			squirrel.Expr("s.description ilike ?", search),
-		})
+		s.q = s.q.Where("l.name ilike ?", search)
 	}
 }
 
-func (s *StatusSearchParams) scanFullColumns(r pgx.Rows, c *Status) error {
+func (s *levelsSearchParams) scanFullColumns(r pgx.Rows, o *Level) error {
 	return r.Scan(
-		&c.Code,
-		&c.Description,
-		&c.CreateTs,
+		&o.Id,
+		&o.Name,
+		&o.CreateTs,
 	)
 }
 
-func (s *StatusSearchParams) GetData(ctx context.Context) ([]*Status, error) {
+func (s *levelsSearchParams) GetData(ctx context.Context) ([]*Level, error) {
 	if s.PageSize == 0 {
 		s.PageSize = 20
 	}
@@ -83,11 +61,11 @@ func (s *StatusSearchParams) GetData(ctx context.Context) ([]*Status, error) {
 	var orderBy string
 	switch s.OrderBy {
 	case "createTs":
-		orderBy = "s.create_ts"
-	case "description":
-		orderBy = "s.description"
+		orderBy = "l.create_ts"
+	case "name":
+		orderBy = "l.name"
 	default:
-		orderBy = "s.code"
+		orderBy = "l.id"
 	}
 
 	if s.OrderDesc {
@@ -95,17 +73,17 @@ func (s *StatusSearchParams) GetData(ctx context.Context) ([]*Status, error) {
 	}
 
 	q := s.q.Columns(
-		"s.code",
-		"s.description",
-		"s.create_ts",
+		"l.id",
+		"l.name",
+		"l.create_ts",
 	).OrderBy(orderBy).Offset(offset).Limit(s.PageSize)
 
 	r, err := pgdb.QbQuery(ctx, q)
 	if err != nil {
 		return nil, err
 	}
-	opportunities, err := pgx.CollectRows(r, func(row pgx.CollectableRow) (*Status, error) {
-		var o Status
+	opportunities, err := pgx.CollectRows(r, func(row pgx.CollectableRow) (*Level, error) {
+		var o Level
 		err := s.scanFullColumns(r, &o)
 		if err != nil {
 			return nil, err
@@ -121,7 +99,7 @@ func (s *StatusSearchParams) GetData(ctx context.Context) ([]*Status, error) {
 	return opportunities, nil
 }
 
-func (s *StatusSearchParams) GetCount(ctx context.Context) (cnt int, err error) {
+func (s *levelsSearchParams) GetCount(ctx context.Context) (cnt int, err error) {
 	q := s.q.Column("count(1) as count")
 	r, err := pgdb.QbQueryRow(ctx, q)
 	if err != nil {
@@ -132,9 +110,9 @@ func (s *StatusSearchParams) GetCount(ctx context.Context) (cnt int, err error) 
 	return
 }
 
-func ListStatusHandler(c *fiber.Ctx) (err error) {
+func ListLevelsHandler(c *fiber.Ctx) (err error) {
 	ctx := c.Context()
-	var s StatusSearchParams
+	var s levelsSearchParams
 	err = c.QueryParser(&s)
 	if err != nil {
 		return errs.ErrBadParameter().WithDetail(err)
