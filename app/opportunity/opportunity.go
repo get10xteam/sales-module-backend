@@ -35,7 +35,6 @@ type Opportunity struct {
 	OwnerName                       string               `json:"ownerName,omitempty" db:"owner_name"`
 	AssigneeName                    string               `json:"assigneeName,omitempty" db:"assignee_name"`
 	ClientName                      string               `json:"clientName,omitempty" db:"client_name"`
-	StatusName                      string               `json:"statusName,omitempty" db:"status_name"`
 }
 
 func (u *Opportunity) CreateToDB(ctx context.Context) error {
@@ -225,7 +224,7 @@ func (s *opportunitiesSearchParams) Apply() {
 			squirrel.Expr("uo.name ilike ?", search),
 			squirrel.Expr("ua.name ilike ?", search),
 			squirrel.Expr("c.name ilike ?", search),
-			squirrel.Expr("s.name ilike ?", search),
+			squirrel.Expr("s.code ilike ?", search),
 		})
 	}
 }
@@ -248,7 +247,6 @@ func (s *opportunitiesSearchParams) scanFullColumns(r pgx.Rows, o *Opportunity) 
 		&o.OwnerName,
 		&o.AssigneeName,
 		&o.ClientName,
-		&o.StatusName,
 	)
 }
 
@@ -270,7 +268,6 @@ func (s *opportunitiesSearchParams) columns() []string {
 		"uo.name as owner_name",
 		"ua.name as assignee_name",
 		"c.name as client_name",
-		"s.name as status_name",
 	}
 }
 
@@ -297,8 +294,8 @@ func (s *opportunitiesSearchParams) GetData(ctx context.Context) ([]*Opportunity
 		orderBy = "ua.name"
 	case "clientName":
 		orderBy = "c.name"
-	case "statusName":
-		orderBy = "s.name"
+	case "statusCode":
+		orderBy = "s.code"
 	default:
 		orderBy = "o.id"
 	}
