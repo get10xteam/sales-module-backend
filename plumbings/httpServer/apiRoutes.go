@@ -3,6 +3,7 @@ package httpServer
 import (
 	"github.com/get10xteam/sales-module-backend/app/level"
 	"github.com/get10xteam/sales-module-backend/app/opportunity"
+	"github.com/get10xteam/sales-module-backend/app/status"
 	"github.com/get10xteam/sales-module-backend/app/user"
 	"github.com/get10xteam/sales-module-backend/plumbings/oauth"
 	"github.com/get10xteam/sales-module-backend/plumbings/storage"
@@ -53,5 +54,9 @@ func apiRoutes(apiRouter fiber.Router) {
 	levels := apiRouter.Group("levels")
 	{ // levels
 		levels.Get("", user.MustAuthMiddleware, level.ListLevelsHandler)
+	}
+	statuses := apiRouter.Group("statuses")
+	{ // statuses
+		statuses.Get("", user.MustAuthMiddleware, status.ListStatusHandler)
 	}
 }
