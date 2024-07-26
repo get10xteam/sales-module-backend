@@ -55,7 +55,6 @@ func (s *StatusSearchParams) Apply() {
 	if len(s.Search) > 0 {
 		search := "%" + s.Search + "%"
 		s.q = s.q.Where(squirrel.Or{
-			squirrel.Expr("s.name ilike ?", search),
 			squirrel.Expr("s.description ilike ?", search),
 		})
 	}

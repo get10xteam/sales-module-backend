@@ -1,6 +1,7 @@
 package httpServer
 
 import (
+	"github.com/get10xteam/sales-module-backend/app/client"
 	"github.com/get10xteam/sales-module-backend/app/level"
 	"github.com/get10xteam/sales-module-backend/app/opportunity"
 	"github.com/get10xteam/sales-module-backend/app/status"
@@ -58,5 +59,9 @@ func apiRoutes(apiRouter fiber.Router) {
 	statuses := apiRouter.Group("statuses")
 	{ // statuses
 		statuses.Get("", user.MustAuthMiddleware, status.ListStatusHandler)
+	}
+	clients := apiRouter.Group("clients")
+	{ // clients
+		clients.Get("", user.MustAuthMiddleware, client.ListClientsHandler)
 	}
 }
