@@ -3,7 +3,6 @@ package opportunity
 import (
 	"context"
 	"errors"
-	"fmt"
 	"time"
 
 	"github.com/Masterminds/squirrel"
@@ -334,9 +333,6 @@ func (s *opportunitiesSearchParams) GetSingle(ctx context.Context) (*Opportunity
 	if err != nil {
 		return nil, err
 	}
-
-	sql, _, _ := s.q.ToSql()
-	fmt.Println(sql)
 
 	opportunity, err := pgx.CollectOneRow(r, func(row pgx.CollectableRow) (*Opportunity, error) {
 		var o Opportunity
