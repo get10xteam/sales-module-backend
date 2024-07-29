@@ -37,6 +37,8 @@ type UploadConfig struct {
 	PathIncludeOriginalFileName bool
 	// when nil, will use the exported Upload function
 	Uploader Uploader
+	// when true, upload config can be processed with empty payload
+	AllowEmpty bool
 }
 
 var safeFileNameRegex = regexp.MustCompile(`[^0-9a-zA-Z-_\.]+`)
@@ -60,6 +62,10 @@ func UploadHandlerFactory(u *UploadConfig) func(c *fiber.Ctx) (err error) {
 		}
 		formFileHeader, err := c.FormFile("file")
 		if err != nil {
+			if u.AllowEmpty {
+				c.Locals(_uploadedUrlLocalsKey, "")
+				return c.Next()
+			}
 			return errs.ErrBadParameter().WithMessage("form-data \"name=file\" not found")
 		}
 		formFileSize := int(formFileHeader.Size)
@@ -115,23 +121,13 @@ func UploadHandlerFactory(u *UploadConfig) func(c *fiber.Ctx) (err error) {
 		if len(formFileName) == 0 {
 			formFileName = sumStrURL
 		}
-		orgIdStr := c.Params("orgId")
-		if len(orgIdStr) > 0 {
-			a := make([]string, (len(fileNameSegments) + 2))
-			a[0] = "uploads"
-			a[1] = orgIdStr
-			for i, s := range fileNameSegments {
-				a[i+2] = s
-			}
-			fileNameSegments = a
-		} else {
-			a := make([]string, (len(fileNameSegments) + 1))
-			a[0] = "uploads"
-			for i, s := range fileNameSegments {
-				a[i+1] = s
-			}
-			fileNameSegments = a
+
+		a := make([]string, (len(fileNameSegments) + 1))
+		a[0] = "uploads"
+		for i, s := range fileNameSegments {
+			a[i+1] = s
 		}
+		fileNameSegments = a
 		destPath := strings.Join(fileNameSegments, "/")
 		var uploader Uploader = u.Uploader
 		if uploader == nil {

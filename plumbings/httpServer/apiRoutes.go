@@ -63,5 +63,32 @@ func apiRoutes(apiRouter fiber.Router) {
 	clients := apiRouter.Group("clients")
 	{ // clients
 		clients.Get("", user.MustAuthMiddleware, client.ListClientsHandler)
+		clients.Post("",
+			user.MustAuthMiddleware,
+			storage.UploadHandlerFactory(&storage.UploadConfig{
+				NonFormCallNext:  true,
+				CallNextWhenDone: true,
+				AllowedTypes:     []string{"image"},
+				MaxSize:          1 * 1024 * 1024,
+				PathPrefix:       "clients",
+				PathIncludeHash:  true,
+				AllowEmpty:       true,
+			}),
+			client.CreateClientHandler,
+		)
+		clients.Put("/:clientId",
+			user.MustAuthMiddleware,
+			client.MustClientIDMiddleware,
+			storage.UploadHandlerFactory(&storage.UploadConfig{
+				NonFormCallNext:  true,
+				CallNextWhenDone: true,
+				AllowedTypes:     []string{"image"},
+				MaxSize:          1 * 1024 * 1024,
+				PathPrefix:       "clients",
+				PathIncludeHash:  true,
+				AllowEmpty:       true,
+			}),
+			client.ChangeClientHandler,
+		)
 	}
 }

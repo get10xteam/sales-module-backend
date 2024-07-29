@@ -7,6 +7,7 @@ import (
 	"github.com/Masterminds/squirrel"
 	"github.com/get10xteam/sales-module-backend/errs"
 	"github.com/get10xteam/sales-module-backend/plumbings/config"
+	"github.com/get10xteam/sales-module-backend/plumbings/storage"
 	"github.com/get10xteam/sales-module-backend/plumbings/utils"
 	"github.com/gofiber/fiber/v2"
 	"github.com/jackc/pgx/v5"
@@ -18,7 +19,7 @@ import (
 
 type Client struct {
 	Id       config.ObfuscatedInt `json:"id" db:"id"`
-	Name     *string              `json:"name,omitempty" db:"name"`
+	Name     string               `form:"name" json:"name,omitempty" db:"name"`
 	LogoUrl  *string              `json:"logoUrl,omitempty" db:"logo_url"`
 	CreateTs time.Time            `json:"createTs,omitempty" db:"create_ts"`
 }
@@ -39,6 +40,34 @@ func ClientById(ctx context.Context, id config.ObfuscatedInt, cols ...string) (*
 		return nil, err
 	}
 	return u, err
+}
+
+func (cl *Client) UpdateToDB(ctx context.Context, updateMap map[string]any) (err error) {
+	if cl.Id.IsEmpty() {
+		return errs.ErrBadParameter()
+	}
+	_, err = pgdb.QbExec(ctx, pgdb.Qb.Update("clients").
+		SetMap(updateMap).
+		Where("id = ?", cl.Id))
+	return
+}
+
+func (cl *Client) CreateToDB(ctx context.Context) (err error) {
+	if !cl.Id.IsEmpty() {
+		return errs.ErrBadParameter()
+	}
+	insertMap := map[string]any{
+		"name": cl.Name,
+	}
+	if cl.LogoUrl != nil {
+		insertMap["logo_url"] = cl.LogoUrl
+	}
+	r, err := pgdb.QbQueryRow(ctx, pgdb.Qb.Insert("clients").SetMap(insertMap).Suffix("returning id, create_ts"))
+	if err != nil {
+		return
+	}
+	err = r.Scan(&cl.Id, &cl.CreateTs)
+	return
 }
 
 type ClientsSearchParams struct {
@@ -153,4 +182,94 @@ func ListClientsHandler(c *fiber.Ctx) (err error) {
 	}
 
 	return utils.FiberJSONWrap(c, data, count)
+}
+
+func (cl *Client) LoadIdentifiersFromHttp(c *fiber.Ctx) (err error) {
+	if clientIdStr := c.Params("clientId"); len(clientIdStr) > 0 {
+		err = cl.Id.Parse(clientIdStr)
+		if err != nil {
+			return errs.ErrBadParameter().WithMessage("invalid path :clientId parameter")
+		}
+	} else {
+		return errs.ErrBadParameter().WithMessage("invalid path :clientId parameter")
+	}
+	return
+}
+
+func CreateClientHandler(c *fiber.Ctx) (err error) {
+	ctx := c.Context()
+	var cl Client
+	err = c.BodyParser(&cl)
+	if err != nil {
+		return errs.ErrBadParameter().WithDetail(err)
+	}
+	if len(cl.Name) == 0 {
+		return errs.ErrBadParameter().WithMessage("client name must be set")
+	}
+	logoURL := storage.GetUploadedUrlFromHttp(c)
+	if logoURL != "" {
+		cl.LogoUrl = &logoURL
+	}
+
+	err = cl.CreateToDB(ctx)
+	if err != nil {
+		return errs.ErrServerError().WithDetail(err)
+	}
+	return utils.FiberJSONWrap(c, cl)
+}
+
+const clientLocalsKey = "clientsOpportunity"
+
+// Should only be called after MustAuthMiddleware.
+func MustClientIDMiddleware(c *fiber.Ctx) error {
+
+	var id config.ObfuscatedInt
+
+	clientID := c.Params("clientID")
+	if clientID == "" {
+		return errs.ErrBadParameter().WithMessage("invalid path :clientID parameter")
+	}
+
+	err := id.Parse(clientID)
+	if err != nil {
+		return errs.ErrBadParameter().WithMessage("invalid path :clientID parameter")
+	}
+
+	c.Locals(clientLocalsKey, id)
+
+	return c.Next()
+}
+
+func ChangeClientHandler(c *fiber.Ctx) (err error) {
+	ctx := c.Context()
+	var cl Client
+	err = c.BodyParser(&cl)
+	if err != nil {
+		return errs.ErrBadParameter().WithDetail(err)
+	}
+
+	clientID, ok := c.Locals(clientLocalsKey).(config.ObfuscatedInt)
+	if !ok {
+		return errs.ErrBadParameter().WithMessage("invalid path :clientID parameter")
+	}
+
+	cl.Id = clientID
+
+	update := map[string]any{}
+	if len(cl.Name) > 0 {
+		update["name"] = cl.Name
+	}
+
+	logoURL := storage.GetUploadedUrlFromHttp(c)
+	if logoURL != "" {
+		update["logo_url"] = logoURL
+	}
+
+	if len(update) > 0 {
+		err = cl.UpdateToDB(ctx, update)
+		if err != nil {
+			return errs.ErrServerError().WithDetail(err)
+		}
+	}
+	return utils.FiberJSONWrap(c, cl)
 }
