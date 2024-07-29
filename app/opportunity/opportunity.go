@@ -328,7 +328,7 @@ func (s *opportunitiesSearchParams) GetData(ctx context.Context) ([]*Opportunity
 }
 
 func (s *opportunitiesSearchParams) GetSingle(ctx context.Context) (*Opportunity, error) {
-	s.q = s.q.Columns(s.columns()...).Limit(1)
+	s.q = s.q.Columns(s.columns()...).Where("o.id = ?", s.OpportunityID).Limit(1)
 	r, err := pgdb.QbQuery(ctx, s.q)
 	if err != nil {
 		return nil, err
