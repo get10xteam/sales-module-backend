@@ -76,7 +76,7 @@ func apiRoutes(apiRouter fiber.Router) {
 			}),
 			client.CreateClientHandler,
 		)
-		clients.Put("/:clientId",
+		clients.Patch("/:clientId",
 			user.MustAuthMiddleware,
 			client.MustClientIDMiddleware,
 			storage.UploadHandlerFactory(&storage.UploadConfig{

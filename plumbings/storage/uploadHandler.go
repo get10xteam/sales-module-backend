@@ -4,13 +4,17 @@ import (
 	"bytes"
 	"crypto/md5"
 	"encoding/base64"
+	"errors"
+	"fmt"
 	"io"
+	"net/http"
 	"regexp"
 	"strconv"
 	"strings"
 
 	"github.com/get10xteam/sales-module-backend/errs"
 	"github.com/get10xteam/sales-module-backend/plumbings/utils"
+	"github.com/valyala/fasthttp"
 
 	"github.com/gofiber/fiber/v2"
 )
@@ -62,7 +66,9 @@ func UploadHandlerFactory(u *UploadConfig) func(c *fiber.Ctx) (err error) {
 		}
 		formFileHeader, err := c.FormFile("file")
 		if err != nil {
-			if u.AllowEmpty {
+			fmt.Println(errors.Is(err, http.ErrMissingFile))
+			fmt.Println(err)
+			if u.AllowEmpty && errors.Is(err, fasthttp.ErrMissingFile) {
 				c.Locals(_uploadedUrlLocalsKey, "")
 				return c.Next()
 			}
