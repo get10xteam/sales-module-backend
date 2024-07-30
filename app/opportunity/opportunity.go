@@ -215,7 +215,7 @@ type opportunitiesSearchParams struct {
 	OwnerId            config.ObfuscatedInt   // TODO add logic with OwnerId
 	OwnerIdRecurse     bool                   // TODO add logic with OwnerIdRecurse
 	StatusCodes        []string               `query:"statusCodes"`
-	ClientId           []config.ObfuscatedInt `query:"clientIds"`
+	ClientIds          []config.ObfuscatedInt `query:"clientIds"`
 }
 
 func (s *opportunitiesSearchParams) Apply() {
@@ -253,8 +253,8 @@ func (s *opportunitiesSearchParams) Apply() {
 		s.q = s.q.Where(squirrel.Eq{"s.code": s.StatusCodes})
 	}
 
-	if len(s.ClientId) > 0 {
-		s.q = s.q.Where(squirrel.Eq{"c.id": s.ClientId})
+	if len(s.ClientIds) > 0 {
+		s.q = s.q.Where(squirrel.Eq{"c.id": s.ClientIds})
 	}
 }
 
