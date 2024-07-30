@@ -103,7 +103,7 @@ func (s *StatusSearchParams) GetData(ctx context.Context) ([]*Status, error) {
 	if err != nil {
 		return nil, err
 	}
-	opportunities, err := pgx.CollectRows(r, func(row pgx.CollectableRow) (*Status, error) {
+	statuses, err := pgx.CollectRows(r, func(row pgx.CollectableRow) (*Status, error) {
 		var o Status
 		err := s.scanFullColumns(r, &o)
 		if err != nil {
@@ -117,7 +117,7 @@ func (s *StatusSearchParams) GetData(ctx context.Context) ([]*Status, error) {
 		return nil, err
 	}
 
-	return opportunities, nil
+	return statuses, nil
 }
 
 func (s *StatusSearchParams) GetCount(ctx context.Context) (cnt int, err error) {

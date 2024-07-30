@@ -82,7 +82,7 @@ func (s *levelsSearchParams) GetData(ctx context.Context) ([]*Level, error) {
 	if err != nil {
 		return nil, err
 	}
-	opportunities, err := pgx.CollectRows(r, func(row pgx.CollectableRow) (*Level, error) {
+	levels, err := pgx.CollectRows(r, func(row pgx.CollectableRow) (*Level, error) {
 		var o Level
 		err := s.scanFullColumns(r, &o)
 		if err != nil {
@@ -96,7 +96,7 @@ func (s *levelsSearchParams) GetData(ctx context.Context) ([]*Level, error) {
 		return nil, err
 	}
 
-	return opportunities, nil
+	return levels, nil
 }
 
 func (s *levelsSearchParams) GetCount(ctx context.Context) (cnt int, err error) {
