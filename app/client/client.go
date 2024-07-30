@@ -7,7 +7,6 @@ import (
 	"github.com/Masterminds/squirrel"
 	"github.com/get10xteam/sales-module-backend/errs"
 	"github.com/get10xteam/sales-module-backend/plumbings/config"
-	"github.com/get10xteam/sales-module-backend/plumbings/storage"
 	"github.com/get10xteam/sales-module-backend/plumbings/utils"
 	"github.com/gofiber/fiber/v2"
 	"github.com/jackc/pgx/v5"
@@ -19,7 +18,7 @@ import (
 
 type Client struct {
 	Id       config.ObfuscatedInt `json:"id" db:"id"`
-	Name     string               `form:"name" json:"name,omitempty" db:"name"`
+	Name     string               `json:"name,omitempty" db:"name"`
 	LogoUrl  *string              `json:"logoUrl,omitempty" db:"logo_url"`
 	CreateTs time.Time            `json:"createTs,omitempty" db:"create_ts"`
 }
@@ -206,10 +205,6 @@ func CreateClientHandler(c *fiber.Ctx) (err error) {
 	if len(cl.Name) == 0 {
 		return errs.ErrBadParameter().WithMessage("client name must be set")
 	}
-	logoURL := storage.GetUploadedUrlFromHttp(c)
-	if logoURL != "" {
-		cl.LogoUrl = &logoURL
-	}
 
 	err = cl.CreateToDB(ctx)
 	if err != nil {
@@ -260,9 +255,12 @@ func ChangeClientHandler(c *fiber.Ctx) (err error) {
 		update["name"] = cl.Name
 	}
 
-	logoURL := storage.GetUploadedUrlFromHttp(c)
-	if logoURL != "" {
-		update["logo_url"] = logoURL
+	if cl.LogoUrl != nil {
+		if len(*cl.LogoUrl) > 0 {
+			update["logo_url"] = cl.LogoUrl
+		} else {
+			update["logo_url"] = nil
+		}
 	}
 
 	if len(update) > 0 {

@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"crypto/md5"
 	"encoding/base64"
-	"errors"
 	"io"
 	"regexp"
 	"strconv"
@@ -12,7 +11,6 @@ import (
 
 	"github.com/get10xteam/sales-module-backend/errs"
 	"github.com/get10xteam/sales-module-backend/plumbings/utils"
-	"github.com/valyala/fasthttp"
 
 	"github.com/gofiber/fiber/v2"
 )
@@ -39,8 +37,6 @@ type UploadConfig struct {
 	PathIncludeOriginalFileName bool
 	// when nil, will use the exported Upload function
 	Uploader Uploader
-	// when true, upload config can be processed with empty payload
-	AllowEmpty bool
 }
 
 var safeFileNameRegex = regexp.MustCompile(`[^0-9a-zA-Z-_\.]+`)
@@ -64,10 +60,6 @@ func UploadHandlerFactory(u *UploadConfig) func(c *fiber.Ctx) (err error) {
 		}
 		formFileHeader, err := c.FormFile("file")
 		if err != nil {
-			if u.AllowEmpty && errors.Is(err, fasthttp.ErrMissingFile) {
-				c.Locals(_uploadedUrlLocalsKey, "")
-				return c.Next()
-			}
 			return errs.ErrBadParameter().WithMessage("form-data \"name=file\" not found")
 		}
 		formFileSize := int(formFileHeader.Size)
