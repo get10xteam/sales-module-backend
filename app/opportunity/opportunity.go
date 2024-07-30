@@ -246,7 +246,7 @@ func (s *opportunitiesSearchParams) Apply() {
 	}
 
 	if len(s.OwnerIds) > 0 {
-		s.q = s.q.Where(squirrel.Eq{"o.assignee_id": s.OwnerIds})
+		s.q = s.q.Where(squirrel.Eq{"o.owner_id": s.OwnerIds})
 	}
 
 	if len(s.StatusCodes) > 0 {
