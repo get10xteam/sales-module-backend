@@ -133,7 +133,7 @@ func (s *ClientsSearchParams) GetData(ctx context.Context) ([]*Client, error) {
 	if err != nil {
 		return nil, err
 	}
-	opportunities, err := pgx.CollectRows(r, func(row pgx.CollectableRow) (*Client, error) {
+	clients, err := pgx.CollectRows(r, func(row pgx.CollectableRow) (*Client, error) {
 		var o Client
 		err := s.scanFullColumns(r, &o)
 		if err != nil {
@@ -147,7 +147,7 @@ func (s *ClientsSearchParams) GetData(ctx context.Context) ([]*Client, error) {
 		return nil, err
 	}
 
-	return opportunities, nil
+	return clients, nil
 }
 
 func (s *ClientsSearchParams) GetCount(ctx context.Context) (cnt int, err error) {
@@ -213,7 +213,7 @@ func CreateClientHandler(c *fiber.Ctx) (err error) {
 	return utils.FiberJSONWrap(c, cl)
 }
 
-const clientLocalsKey = "clientsOpportunity"
+const clientLocalsKey = "localsclient"
 
 // Should only be called after MustAuthMiddleware.
 func MustClientIDMiddleware(c *fiber.Ctx) error {
