@@ -1,7 +1,10 @@
 package httpServer
 
 import (
+	"github.com/get10xteam/sales-module-backend/app/client"
+	"github.com/get10xteam/sales-module-backend/app/level"
 	"github.com/get10xteam/sales-module-backend/app/opportunity"
+	"github.com/get10xteam/sales-module-backend/app/status"
 	"github.com/get10xteam/sales-module-backend/app/user"
 	"github.com/get10xteam/sales-module-backend/plumbings/oauth"
 	"github.com/get10xteam/sales-module-backend/plumbings/storage"
@@ -48,5 +51,29 @@ func apiRoutes(apiRouter fiber.Router) {
 		opportunities.Get("", user.MustAuthMiddleware, opportunity.ListOpportunitiesHandler)
 		opportunities.Get("/:opportunityID", user.MustAuthMiddleware, opportunity.MustOpportunityIDMiddleware, opportunity.OpportunityDetailHandler)
 		opportunities.Put("/:opportunityID", user.MustAuthMiddleware, opportunity.MustOpportunityIDMiddleware, opportunity.OpportunityEditHandlerHandler)
+	}
+	levels := apiRouter.Group("levels")
+	{ // levels
+		levels.Get("", user.MustAuthMiddleware, level.ListLevelsHandler)
+	}
+	statuses := apiRouter.Group("statuses")
+	{ // statuses
+		statuses.Get("", user.MustAuthMiddleware, status.ListStatusHandler)
+	}
+	clients := apiRouter.Group("clients")
+	{ // clients
+		clients.Get("", user.MustAuthMiddleware, client.ListClientsHandler)
+		clients.Post("",
+			user.MustAuthMiddleware,
+			storage.UploadHandlerFactory(&storage.UploadConfig{
+				NonFormCallNext: true,
+				AllowedTypes:    []string{"image"},
+				MaxSize:         2 * 1024 * 1024,
+				PathPrefix:      "clients",
+				PathIncludeHash: true,
+			}),
+			client.CreateClientHandler,
+		)
+		clients.Patch("/:clientId", user.MustAuthMiddleware, client.MustClientIDMiddleware, client.ChangeClientHandler)
 	}
 }

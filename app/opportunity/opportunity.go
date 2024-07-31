@@ -200,13 +200,22 @@ func CreateOpportunityHandler(c *fiber.Ctx) error {
 }
 
 type opportunitiesSearchParams struct {
-	Search        string `query:"search"`
-	Page          uint64 `query:"page"`
-	PageSize      uint64 `query:"pageSize"`
-	q             squirrel.SelectBuilder
-	OrderBy       string `query:"orderBy"`
-	OrderDesc     bool   `query:"orderDesc"`
-	OpportunityID config.ObfuscatedInt
+	Search             string `query:"search"`
+	Page               uint64 `query:"page"`
+	PageSize           uint64 `query:"pageSize"`
+	q                  squirrel.SelectBuilder
+	OrderBy            string `query:"orderBy"`
+	OrderDesc          bool   `query:"orderDesc"`
+	OpportunityID      config.ObfuscatedInt
+	IncludeDescription bool                   `query:"includeDescription"`
+	AssigneeIds        []config.ObfuscatedInt `query:"assigneeIds"`
+	AssigneeId         config.ObfuscatedInt   // TODO add logic with AssigneeId
+	AssigneeIdRecurse  bool                   // TODO add logic with AssigneeIdRecurse
+	OwnerIds           []config.ObfuscatedInt `query:"ownerIds"`
+	OwnerId            config.ObfuscatedInt   // TODO add logic with OwnerId
+	OwnerIdRecurse     bool                   // TODO add logic with OwnerIdRecurse
+	StatusCodes        []string               `query:"statusCodes"`
+	ClientIds          []config.ObfuscatedInt `query:"clientIds"`
 }
 
 func (s *opportunitiesSearchParams) Apply() {
@@ -218,14 +227,34 @@ func (s *opportunitiesSearchParams) Apply() {
 
 	if len(s.Search) > 0 {
 		search := "%" + s.Search + "%"
-		s.q = s.q.Where(squirrel.Or{
+		orCondition := squirrel.Or{
 			squirrel.Expr("o.name ilike ?", search),
-			squirrel.Expr("o.description ilike ?", search),
-			squirrel.Expr("uo.name ilike ?", search),
-			squirrel.Expr("ua.name ilike ?", search),
-			squirrel.Expr("c.name ilike ?", search),
-			squirrel.Expr("s.code ilike ?", search),
-		})
+		}
+
+		if s.IncludeDescription {
+			orCondition = append(
+				orCondition,
+				squirrel.Expr("o.description ilike ?", search),
+			)
+		}
+
+		s.q = s.q.Where(orCondition)
+	}
+
+	if len(s.AssigneeIds) > 0 {
+		s.q = s.q.Where(squirrel.Eq{"o.assignee_id": s.AssigneeIds})
+	}
+
+	if len(s.OwnerIds) > 0 {
+		s.q = s.q.Where(squirrel.Eq{"o.owner_id": s.OwnerIds})
+	}
+
+	if len(s.StatusCodes) > 0 {
+		s.q = s.q.Where(squirrel.Eq{"s.code": s.StatusCodes})
+	}
+
+	if len(s.ClientIds) > 0 {
+		s.q = s.q.Where(squirrel.Eq{"c.id": s.ClientIds})
 	}
 }
 
