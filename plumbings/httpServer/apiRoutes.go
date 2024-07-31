@@ -75,5 +75,6 @@ func apiRoutes(apiRouter fiber.Router) {
 			client.CreateClientHandler,
 		)
 		clients.Patch("/:clientId", user.MustAuthMiddleware, client.MustClientIDMiddleware, client.ChangeClientHandler)
+		clients.Get("/:clientId", user.MustAuthMiddleware, client.MustClientIDMiddleware, client.ClientDetailHandler)
 	}
 }
