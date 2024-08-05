@@ -271,7 +271,7 @@ func CreateOpportunityHandler(c *fiber.Ctx) error {
 	})
 }
 
-type OpportunitiesSearchParams struct {
+type opportunitiesSearchParams struct {
 	Search             string `query:"search"`
 	Page               uint64 `query:"page"`
 	PageSize           uint64 `query:"pageSize"`
@@ -290,7 +290,7 @@ type OpportunitiesSearchParams struct {
 	ClientIds          []config.ObfuscatedInt `query:"clientIds"`
 }
 
-func (s *OpportunitiesSearchParams) Apply() {
+func (s *opportunitiesSearchParams) Apply() {
 	s.q = pgdb.Qb.Select().From("opportunities o").
 		LeftJoin("users uo on uo.id = o.owner_id").
 		LeftJoin("users ua on ua.id = o.assignee_id").
@@ -330,7 +330,7 @@ func (s *OpportunitiesSearchParams) Apply() {
 	}
 }
 
-func (s *OpportunitiesSearchParams) scanFullColumns(r pgx.Rows, o *Opportunity) error {
+func (s *opportunitiesSearchParams) scanFullColumns(r pgx.Rows, o *Opportunity) error {
 	return r.Scan(
 		&o.Id,
 		&o.OwnerId,
@@ -351,7 +351,7 @@ func (s *OpportunitiesSearchParams) scanFullColumns(r pgx.Rows, o *Opportunity) 
 	)
 }
 
-func (s *OpportunitiesSearchParams) columns() []string {
+func (s *opportunitiesSearchParams) columns() []string {
 	return []string{
 		"o.id",
 		"o.owner_id",
@@ -372,7 +372,7 @@ func (s *OpportunitiesSearchParams) columns() []string {
 	}
 }
 
-func (s *OpportunitiesSearchParams) GetData(ctx context.Context) ([]*Opportunity, error) {
+func (s *opportunitiesSearchParams) GetData(ctx context.Context) ([]*Opportunity, error) {
 	if s.PageSize == 0 {
 		s.PageSize = 20
 	}
@@ -428,7 +428,7 @@ func (s *OpportunitiesSearchParams) GetData(ctx context.Context) ([]*Opportunity
 	return opportunities, nil
 }
 
-func (s *OpportunitiesSearchParams) GetSingle(ctx context.Context) (*Opportunity, error) {
+func (s *opportunitiesSearchParams) GetSingle(ctx context.Context) (*Opportunity, error) {
 	s.q = s.q.Columns(s.columns()...).Where("o.id = ?", s.OpportunityID).Limit(1)
 	r, err := pgdb.QbQuery(ctx, s.q)
 	if err != nil {
@@ -452,7 +452,7 @@ func (s *OpportunitiesSearchParams) GetSingle(ctx context.Context) (*Opportunity
 	return opportunity, nil
 }
 
-func (s *OpportunitiesSearchParams) GetCount(ctx context.Context) (cnt int, err error) {
+func (s *opportunitiesSearchParams) GetCount(ctx context.Context) (cnt int, err error) {
 	q := s.q.Column("count(1) as count")
 	r, err := pgdb.QbQueryRow(ctx, q)
 	if err != nil {
@@ -465,7 +465,7 @@ func (s *OpportunitiesSearchParams) GetCount(ctx context.Context) (cnt int, err 
 
 func ListOpportunitiesHandler(c *fiber.Ctx) (err error) {
 	ctx := c.Context()
-	var s OpportunitiesSearchParams
+	var s opportunitiesSearchParams
 	err = c.QueryParser(&s)
 	if err != nil {
 		return errs.ErrBadParameter().WithDetail(err)
@@ -515,7 +515,7 @@ func OpportunityDetailHandler(c *fiber.Ctx) (err error) {
 		return errs.ErrBadParameter().WithMessage("invalid path :opportunityID parameter")
 	}
 
-	var s OpportunitiesSearchParams
+	var s opportunitiesSearchParams
 	s.OpportunityID = opportunityID
 	s.Search = ""
 	s.Apply()
@@ -552,7 +552,7 @@ func OpportunityEditHandlerHandler(c *fiber.Ctx) (err error) {
 
 	u := user.UserFromHttp(c)
 
-	var s OpportunitiesSearchParams
+	var s opportunitiesSearchParams
 	s.OpportunityID = opportunityID
 	s.Search = ""
 	s.Apply()
