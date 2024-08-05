@@ -47,10 +47,30 @@ func apiRoutes(apiRouter fiber.Router) {
 	}
 	opportunities := apiRouter.Group("opportunities")
 	{ // opportunity
-		opportunities.Post("", user.MustAuthMiddleware, opportunity.CreateOpportunityHandler)
+		opportunities.Post("",
+			user.MustAuthMiddleware,
+			storage.UploadHandlerFactory(&storage.UploadConfig{
+				NonFormCallNext: true,
+				AllowedTypes:    []string{"image", "application"},
+				MaxSize:         2 * 1024 * 1024,
+				PathPrefix:      "opportunities",
+				PathIncludeHash: true,
+			}),
+			opportunity.CreateOpportunityHandler)
 		opportunities.Get("", user.MustAuthMiddleware, opportunity.ListOpportunitiesHandler)
 		opportunities.Get("/:opportunityID", user.MustAuthMiddleware, opportunity.MustOpportunityIDMiddleware, opportunity.OpportunityDetailHandler)
 		opportunities.Put("/:opportunityID", user.MustAuthMiddleware, opportunity.MustOpportunityIDMiddleware, opportunity.OpportunityEditHandlerHandler)
+		opportunities.Post("/:opportunityID/categories", user.MustAuthMiddleware, opportunity.MustOpportunityIDMiddleware, opportunity.CreateOpportunityCategoryHandler)
+		opportunities.Patch("/:opportunityID/categories/:opportunityCategoryID",
+			user.MustAuthMiddleware,
+			opportunity.MustOpportunityIDMiddleware,
+			opportunity.MustOpportunityCategoryIDMiddleware,
+			opportunity.ChangeOpportunityCategoryHandler)
+		opportunities.Post("/:opportunityID/categories/:opportunityCategoryID/files",
+			user.MustAuthMiddleware,
+			opportunity.MustOpportunityIDMiddleware,
+			opportunity.MustOpportunityCategoryIDMiddleware,
+			opportunity.CreateOpportunityCategoryFileHandler)
 	}
 	levels := apiRouter.Group("levels")
 	{ // levels

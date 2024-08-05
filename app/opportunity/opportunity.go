@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/Masterminds/squirrel"
+	"github.com/georgysavva/scany/v2/pgxscan"
 	"github.com/get10xteam/sales-module-backend/app/client"
 	"github.com/get10xteam/sales-module-backend/app/status"
 	"github.com/get10xteam/sales-module-backend/app/user"
@@ -19,35 +20,54 @@ import (
 )
 
 type Opportunity struct {
-	Id                              config.ObfuscatedInt `json:"id" db:"id"`
-	OwnerId                         config.ObfuscatedInt `json:"ownerId" db:"owner_id"`
-	AssigneeId                      config.ObfuscatedInt `json:"assigneeId" db:"assignee_id"`
-	ClientId                        config.ObfuscatedInt `json:"clientId" db:"client_id"`
-	StatusCode                      string               `json:"statusCode" db:"status_code"`
-	Name                            string               `json:"name" db:"name"`
-	Description                     *string              `json:"description,omitempty" db:"description"`
-	TalentBudget                    float64              `json:"talentBudget" db:"talent_budget"`
-	NonTalentBudget                 float64              `json:"nonTalentBudget" db:"non_talent_budget"`
-	Revenue                         float64              `json:"revenue" db:"revenue"`
-	ExpectedProfitabilityPercentage float64              `json:"expectedProfitabilityPercentage" db:"expected_profitability_percentage"`
-	ExpectedProfitabilityAmount     float64              `json:"expectedProfitabilityAmount" db:"expected_profitability_amount"`
-	CreateTs                        time.Time            `json:"createTs" db:"create_ts"`
-	OwnerName                       string               `json:"ownerName,omitempty" db:"owner_name"`
-	AssigneeName                    string               `json:"assigneeName,omitempty" db:"assignee_name"`
-	ClientName                      string               `json:"clientName,omitempty" db:"client_name"`
+	Id                              config.ObfuscatedInt   `json:"id" db:"id"`
+	OwnerId                         config.ObfuscatedInt   `json:"ownerId" db:"owner_id"`
+	AssigneeId                      config.ObfuscatedInt   `json:"assigneeId" db:"assignee_id"`
+	ClientId                        config.ObfuscatedInt   `json:"clientId" db:"client_id"`
+	StatusCode                      string                 `json:"statusCode" db:"status_code"`
+	Name                            string                 `json:"name" db:"name"`
+	Description                     *string                `json:"description,omitempty" db:"description"`
+	TalentBudget                    float64                `json:"talentBudget" db:"talent_budget"`
+	NonTalentBudget                 float64                `json:"nonTalentBudget" db:"non_talent_budget"`
+	Revenue                         float64                `json:"revenue" db:"revenue"`
+	ExpectedProfitabilityPercentage float64                `json:"expectedProfitabilityPercentage" db:"expected_profitability_percentage"`
+	ExpectedProfitabilityAmount     float64                `json:"expectedProfitabilityAmount" db:"expected_profitability_amount"`
+	CreateTs                        time.Time              `json:"createTs" db:"create_ts"`
+	OwnerName                       string                 `json:"ownerName,omitempty" db:"owner_name"`
+	AssigneeName                    string                 `json:"assigneeName,omitempty" db:"assignee_name"`
+	ClientName                      string                 `json:"clientName,omitempty" db:"client_name"`
+	Categories                      []*OpportunityCategory `json:"categories,omitempty"`
 }
 
-func (u *Opportunity) CreateToDB(ctx context.Context) error {
+func OpportunityById(ctx context.Context, id config.ObfuscatedInt, cols ...string) (*Opportunity, error) {
+	if len(cols) == 0 {
+		cols = []string{"id"}
+	}
+
+	r, err := pgdb.QbQuery(ctx, pgdb.Qb.Select(cols...).From("opportunities").Where("id = ?", id))
+	if err != nil {
+		return nil, err
+	}
+
+	o := &Opportunity{}
+	err = pgxscan.ScanOne(o, r)
+	if err != nil {
+		return nil, err
+	}
+	return o, err
+}
+
+func (o *Opportunity) CreateToDB(ctx context.Context) error {
 	insertMap := map[string]any{
-		"owner_id":          u.OwnerId,
-		"assignee_id":       u.AssigneeId,
-		"client_id":         u.ClientId,
-		"status_code":       u.StatusCode,
-		"name":              u.Name,
-		"description":       u.Description,
-		"talent_budget":     u.TalentBudget,
-		"non_talent_budget": u.NonTalentBudget,
-		"revenue":           u.Revenue,
+		"owner_id":          o.OwnerId,
+		"assignee_id":       o.AssigneeId,
+		"client_id":         o.ClientId,
+		"status_code":       o.StatusCode,
+		"name":              o.Name,
+		"description":       o.Description,
+		"talent_budget":     o.TalentBudget,
+		"non_talent_budget": o.NonTalentBudget,
+		"revenue":           o.Revenue,
 	}
 
 	r, err := pgdb.QbQueryRow(ctx, pgdb.Qb.Insert("opportunities").SetMap(insertMap).Suffix("returning id"))
@@ -55,7 +75,59 @@ func (u *Opportunity) CreateToDB(ctx context.Context) error {
 		return err
 	}
 
-	return r.Scan(&u.Id)
+	if err = r.Scan(&o.Id); err != nil {
+		return err
+	}
+
+	if len(o.Categories) > 0 {
+		qb := pgdb.Qb.Insert("opportunity_categories").Suffix("returning id, create_ts")
+		qb = qb.Columns("name", "opportunity_id")
+		for _, category := range o.Categories {
+			qb = qb.Values(category.Name, o.Id)
+		}
+		var r pgx.Rows
+		r, err = pgdb.QbQuery(ctx, qb)
+		if err != nil {
+			return err
+		}
+		defer r.Close()
+		for _, category := range o.Categories {
+			if r.Next() {
+				err = r.Scan(&category.Id, &category.CreateTs)
+				if err != nil {
+					return err
+				}
+			}
+		}
+
+		for _, category := range o.Categories {
+			if len(category.Files) > 0 {
+				qb = pgdb.Qb.Insert("opportunity_category_files").Suffix("returning id, create_ts")
+				qb = qb.Columns("opportunity_category_id", "url", "name", "version", "creator_id")
+				for index, file := range category.Files {
+					file.Version = index + 1
+					qb = qb.Values(category.Id, file.URL, file.Name, file.Version, o.AssigneeId)
+				}
+
+				r, err = pgdb.QbQuery(ctx, qb)
+				if err != nil {
+					return err
+				}
+
+				defer r.Close()
+				for _, files := range category.Files {
+					if r.Next() {
+						err = r.Scan(&files.Id, &files.CreateTs)
+						if err != nil {
+							return err
+						}
+					}
+				}
+			}
+		}
+	}
+
+	return nil
 }
 
 func (o *Opportunity) Validate(ctx context.Context) (err error) {
@@ -199,7 +271,7 @@ func CreateOpportunityHandler(c *fiber.Ctx) error {
 	})
 }
 
-type opportunitiesSearchParams struct {
+type OpportunitiesSearchParams struct {
 	Search             string `query:"search"`
 	Page               uint64 `query:"page"`
 	PageSize           uint64 `query:"pageSize"`
@@ -209,16 +281,16 @@ type opportunitiesSearchParams struct {
 	OpportunityID      config.ObfuscatedInt
 	IncludeDescription bool                   `query:"includeDescription"`
 	AssigneeIds        []config.ObfuscatedInt `query:"assigneeIds"`
-	AssigneeId         config.ObfuscatedInt   // TODO add logic with AssigneeId
+	AssigneeId         config.ObfuscatedInt   // TODO add logic with AssigneeId tidak boleh refer selain bawahan dan diri sendiri
 	AssigneeIdRecurse  bool                   // TODO add logic with AssigneeIdRecurse
 	OwnerIds           []config.ObfuscatedInt `query:"ownerIds"`
-	OwnerId            config.ObfuscatedInt   // TODO add logic with OwnerId
+	OwnerId            config.ObfuscatedInt   // TODO add logic with OwnerId tidak boleh refer selain bawahan dan diri sendiri
 	OwnerIdRecurse     bool                   // TODO add logic with OwnerIdRecurse
 	StatusCodes        []string               `query:"statusCodes"`
 	ClientIds          []config.ObfuscatedInt `query:"clientIds"`
 }
 
-func (s *opportunitiesSearchParams) Apply() {
+func (s *OpportunitiesSearchParams) Apply() {
 	s.q = pgdb.Qb.Select().From("opportunities o").
 		LeftJoin("users uo on uo.id = o.owner_id").
 		LeftJoin("users ua on ua.id = o.assignee_id").
@@ -258,7 +330,7 @@ func (s *opportunitiesSearchParams) Apply() {
 	}
 }
 
-func (s *opportunitiesSearchParams) scanFullColumns(r pgx.Rows, o *Opportunity) error {
+func (s *OpportunitiesSearchParams) scanFullColumns(r pgx.Rows, o *Opportunity) error {
 	return r.Scan(
 		&o.Id,
 		&o.OwnerId,
@@ -279,7 +351,7 @@ func (s *opportunitiesSearchParams) scanFullColumns(r pgx.Rows, o *Opportunity) 
 	)
 }
 
-func (s *opportunitiesSearchParams) columns() []string {
+func (s *OpportunitiesSearchParams) columns() []string {
 	return []string{
 		"o.id",
 		"o.owner_id",
@@ -300,7 +372,7 @@ func (s *opportunitiesSearchParams) columns() []string {
 	}
 }
 
-func (s *opportunitiesSearchParams) GetData(ctx context.Context) ([]*Opportunity, error) {
+func (s *OpportunitiesSearchParams) GetData(ctx context.Context) ([]*Opportunity, error) {
 	if s.PageSize == 0 {
 		s.PageSize = 20
 	}
@@ -356,7 +428,7 @@ func (s *opportunitiesSearchParams) GetData(ctx context.Context) ([]*Opportunity
 	return opportunities, nil
 }
 
-func (s *opportunitiesSearchParams) GetSingle(ctx context.Context) (*Opportunity, error) {
+func (s *OpportunitiesSearchParams) GetSingle(ctx context.Context) (*Opportunity, error) {
 	s.q = s.q.Columns(s.columns()...).Where("o.id = ?", s.OpportunityID).Limit(1)
 	r, err := pgdb.QbQuery(ctx, s.q)
 	if err != nil {
@@ -380,7 +452,7 @@ func (s *opportunitiesSearchParams) GetSingle(ctx context.Context) (*Opportunity
 	return opportunity, nil
 }
 
-func (s *opportunitiesSearchParams) GetCount(ctx context.Context) (cnt int, err error) {
+func (s *OpportunitiesSearchParams) GetCount(ctx context.Context) (cnt int, err error) {
 	q := s.q.Column("count(1) as count")
 	r, err := pgdb.QbQueryRow(ctx, q)
 	if err != nil {
@@ -393,7 +465,7 @@ func (s *opportunitiesSearchParams) GetCount(ctx context.Context) (cnt int, err 
 
 func ListOpportunitiesHandler(c *fiber.Ctx) (err error) {
 	ctx := c.Context()
-	var s opportunitiesSearchParams
+	var s OpportunitiesSearchParams
 	err = c.QueryParser(&s)
 	if err != nil {
 		return errs.ErrBadParameter().WithDetail(err)
@@ -443,7 +515,7 @@ func OpportunityDetailHandler(c *fiber.Ctx) (err error) {
 		return errs.ErrBadParameter().WithMessage("invalid path :opportunityID parameter")
 	}
 
-	var s opportunitiesSearchParams
+	var s OpportunitiesSearchParams
 	s.OpportunityID = opportunityID
 	s.Search = ""
 	s.Apply()
@@ -480,7 +552,7 @@ func OpportunityEditHandlerHandler(c *fiber.Ctx) (err error) {
 
 	u := user.UserFromHttp(c)
 
-	var s opportunitiesSearchParams
+	var s OpportunitiesSearchParams
 	s.OpportunityID = opportunityID
 	s.Search = ""
 	s.Apply()
