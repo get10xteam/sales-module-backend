@@ -68,10 +68,10 @@ type OauthAuthorization struct {
 	Subject        *string           `db:"subject" json:"subject,omitempty"`
 	Email          *string           `db:"email" json:"email,omitempty"`
 	Name           *string           `db:"name" json:"name,omitempty"`
-	DestinationURL *string           `db:"destinationurl" json:"destinationUrl,omitempty"`
+	DestinationURL *string           `db:"destination_url" json:"destinationUrl,omitempty"`
 	Expiry         time.Time         `db:"expiry" json:"expiry,omitempty"`
-	CreateTs       time.Time         `db:"createts" json:"-"`
-	ExchangeTs     *time.Time        `db:"exchangets" json:"-"`
+	CreateTs       time.Time         `db:"create_ts" json:"-"`
+	ExchangeTs     *time.Time        `db:"exchange_ts" json:"-"`
 }
 
 func OauthAuthorizationById(ctx context.Context, provider oauthProviderEnum, stateId b64uuid.B64Uuid) (o *OauthAuthorization, err error) {
@@ -80,23 +80,23 @@ func OauthAuthorizationById(ctx context.Context, provider oauthProviderEnum, sta
 	return
 }
 func (o *OauthAuthorization) LoadColumns(ctx context.Context) (err error) {
-	const sql = `select email, destinationurl, expiry, createts, exchangets from oauth_authorization
-	where provider = $1 and state = $2`
+	const sql = `select email, destination_url, expiry, create_ts, exchange_ts from oauth_authorizations
+ where provider = $1 and state = $2`
 	err = pgdb.QueryRow(ctx, sql, o.Provider, o.State).Scan(
 		&o.Email, &o.DestinationURL, &o.Expiry, &o.CreateTs, &o.Expiry,
 	)
 	return
 }
 
-// Provider is mandatory, DestinationURL is optional. Other fields igored.
+// Provider is mandatory, DestinationURL is optional. Other fields ignored.
 func (o *OauthAuthorization) CreateSaveToDB(ctx context.Context) (err error) {
 	if o.Provider == 0 {
 		return errs.ErrBadParameter()
 	}
 	o.State = b64uuid.NewRandom()
-	const sql = `insert into oauth_authorization 
-	(provider, state, destinationurl, expiry, createts)
-	values ($1, $2, $3, $4, $5)`
+	const sql = `insert into oauth_authorizations 
+ (provider, state, destination_url, expiry, create_ts)
+ values ($1, $2, $3, $4, $5)`
 	now := time.Now()
 	expirationSeconds := config.Config.Auth.AuthorizationExpirationSeconds
 	if expirationSeconds == 0 {
@@ -114,11 +114,11 @@ func (o *OauthAuthorization) CreateSaveToDB(ctx context.Context) (err error) {
 	return
 }
 
-// Updates email, subject, name, exchangets with field values
+// Updates email, subject, name, exchange_ts with field values
 func (o *OauthAuthorization) UpdateExchange(ctx context.Context) (err error) {
-	const sql = `update oauth_authorization set 
-	email = $3, subject = $4, name = $5, exchangets = $6
-	where provider = $1 and state = $2`
+	const sql = `update oauth_authorizations set 
+ email = $3, subject = $4, name = $5, exchange_ts = $6
+ where provider = $1 and state = $2`
 	_, err = pgdb.Exec(ctx, sql, o.Provider, o.State,
 		o.Email, o.Subject, o.Name, o.ExchangeTs)
 	return

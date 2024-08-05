@@ -13,15 +13,16 @@ import (
 )
 
 type UserSearchQuery struct {
-	Search             string               `query:"search"`
-	IncludeDeactivated bool                 `query:"includeDeactivated"`
-	IncludeRefs        bool                 `query:"includeRefs"`
-	ParentUserID       config.ObfuscatedInt `query:"parentUserID"`
-	Page               uint64               `query:"page"`
-	PageSize           uint64               `query:"pageSize"`
-	q                  squirrel.SelectBuilder
-	OrderBy            string `query:"orderBy"`
-	OrderDesc          bool   `query:"orderDesc"`
+	Search              string               `query:"search"`
+	IncludeDeactivated  bool                 `query:"includeDeactivated"`
+	IncludeRefs         bool                 `query:"includeRefs"`
+	ParentUserID        config.ObfuscatedInt `query:"parentUserID"`
+	Page                uint64               `query:"page"`
+	PageSize            uint64               `query:"pageSize"`
+	q                   squirrel.SelectBuilder
+	OrderBy             string `query:"orderBy"`
+	OrderDesc           bool   `query:"orderDesc"`
+	ParentUserIDRecurse bool   `query:"parentUserIDRecurse"`
 }
 
 func (usq *UserSearchQuery) Apply() {
@@ -151,7 +152,9 @@ func ListUsersHandler(c *fiber.Ctx) (err error) {
 		return errs.ErrServerError().WithDetail(err)
 	}
 
-	query.ParentUserID = u.Id
+	if query.ParentUserIDRecurse {
+		query.ParentUserID = u.Id
+	}
 	query.IncludeDeactivated = false
 	query.IncludeRefs = false
 

@@ -2,6 +2,7 @@ package client
 
 import (
 	"context"
+	"errors"
 	"time"
 
 	"github.com/Masterminds/squirrel"
@@ -122,12 +123,7 @@ func (s *ClientsSearchParams) GetData(ctx context.Context) ([]*Client, error) {
 		orderBy += " desc"
 	}
 
-	q := s.q.Columns(
-		"c.id",
-		"c.name",
-		"c.logo_url",
-		"c.create_ts",
-	).OrderBy(orderBy).Offset(offset).Limit(s.PageSize)
+	q := s.q.Columns(s.columns()...).OrderBy(orderBy).Offset(offset).Limit(s.PageSize)
 
 	r, err := pgdb.QbQuery(ctx, q)
 	if err != nil {
@@ -159,6 +155,39 @@ func (s *ClientsSearchParams) GetCount(ctx context.Context) (cnt int, err error)
 
 	err = r.Scan(&cnt)
 	return
+}
+
+func (s *ClientsSearchParams) columns() []string {
+	return []string{
+		"c.id",
+		"c.name",
+		"c.logo_url",
+		"c.create_ts",
+	}
+}
+
+func (s *ClientsSearchParams) GetSingle(ctx context.Context) (*Client, error) {
+	s.q = s.q.Columns(s.columns()...).Where("c.id = ?", s.ClientID).Limit(1)
+	r, err := pgdb.QbQuery(ctx, s.q)
+	if err != nil {
+		return nil, err
+	}
+
+	client, err := pgx.CollectOneRow(r, func(row pgx.CollectableRow) (*Client, error) {
+		var o Client
+		err := s.scanFullColumns(r, &o)
+		if err != nil {
+			return nil, err
+		}
+
+		return &o, nil
+	})
+
+	if err != nil {
+		return nil, err
+	}
+
+	return client, nil
 }
 
 func ListClientsHandler(c *fiber.Ctx) (err error) {
@@ -270,4 +299,27 @@ func ChangeClientHandler(c *fiber.Ctx) (err error) {
 		}
 	}
 	return utils.FiberJSONWrap(c, cl)
+}
+
+func ClientDetailHandler(c *fiber.Ctx) (err error) {
+	ctx := c.Context()
+
+	clientID, ok := c.Locals(clientLocalsKey).(config.ObfuscatedInt)
+	if !ok {
+		return errs.ErrBadParameter().WithMessage("invalid path :clientID parameter")
+	}
+
+	var s ClientsSearchParams
+	s.ClientID = clientID
+	s.Apply()
+
+	data, err := s.GetSingle(ctx)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return errs.ErrNotExist().WithDetail(err)
+		}
+		return errs.ErrServerError().WithDetail(err)
+	}
+
+	return utils.FiberJSONWrap(c, data)
 }
