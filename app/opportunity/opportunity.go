@@ -575,7 +575,7 @@ func OpportunityEditHandlerHandler(c *fiber.Ctx) (err error) {
 
 	for _, category := range o.Categories {
 		category.OpportunityId = o.Id
-		// can be create or update category
+		// create category if id is empty and update category if id is exist
 		err = category.SyncToDB(ctx)
 		if err != nil {
 			return
@@ -584,7 +584,7 @@ func OpportunityEditHandlerHandler(c *fiber.Ctx) (err error) {
 		for _, file := range category.Files {
 			file.OpportunityCategoryId = category.Id
 			file.CreatorId = u.Id
-			// create revision if only file id is empty
+			// create file revision if id is empty
 			if file.Id.IsEmpty() {
 				err = file.CreateToDB(ctx)
 				if err != nil {
