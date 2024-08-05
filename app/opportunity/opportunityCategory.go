@@ -2,7 +2,6 @@ package opportunity
 
 import (
 	"context"
-	"fmt"
 	"time"
 
 	"github.com/get10xteam/sales-module-backend/plumbings/config"
@@ -32,7 +31,6 @@ func (oc *OpportunityCategory) SyncToDB(ctx context.Context) error {
 		if err = r.Scan(&oc.Id, &oc.CreateTs); err != nil {
 			return err
 		}
-		fmt.Println("cek 1")
 	}
 
 	_, err := pgdb.QbExec(ctx, pgdb.Qb.Update("opportunity_categories").SetMap(ocMap).Where("id = ?", oc.Id))
@@ -40,7 +38,6 @@ func (oc *OpportunityCategory) SyncToDB(ctx context.Context) error {
 		return err
 	}
 
-	fmt.Println("cek 2")
 	return nil
 }
 
