@@ -6,7 +6,6 @@ import (
 	"time"
 
 	"github.com/Masterminds/squirrel"
-	"github.com/georgysavva/scany/v2/pgxscan"
 	"github.com/get10xteam/sales-module-backend/app/client"
 	"github.com/get10xteam/sales-module-backend/app/status"
 	"github.com/get10xteam/sales-module-backend/app/user"
@@ -37,24 +36,9 @@ type Opportunity struct {
 	AssigneeName                    string                 `json:"assigneeName,omitempty" db:"assignee_name"`
 	ClientName                      string                 `json:"clientName,omitempty" db:"client_name"`
 	Categories                      []*OpportunityCategory `json:"categories,omitempty"`
-}
-
-func OpportunityById(ctx context.Context, id config.ObfuscatedInt, cols ...string) (*Opportunity, error) {
-	if len(cols) == 0 {
-		cols = []string{"id"}
-	}
-
-	r, err := pgdb.QbQuery(ctx, pgdb.Qb.Select(cols...).From("opportunities").Where("id = ?", id))
-	if err != nil {
-		return nil, err
-	}
-
-	o := &Opportunity{}
-	err = pgxscan.ScanOne(o, r)
-	if err != nil {
-		return nil, err
-	}
-	return o, err
+	OwnerProfileImgUrl              *string                `json:"ownerProfileImgUrl" db:"owner_profile_img_url"`
+	AssigneeProfileImgUrl           *string                `json:"assigneeProfileImgUrl" db:"assignee_profile_img_url"`
+	ClientLogoUrl                   *string                `json:"clientLogoUrl" db:"client_logo_url"`
 }
 
 func (o *Opportunity) CreateToDB(ctx context.Context) error {
@@ -242,6 +226,10 @@ func (o *Opportunity) UpdateToDB(ctx context.Context) (err error) {
 	}
 
 	_, err = pgdb.QbExec(ctx, pgdb.Qb.Update("opportunities").SetMap(updateMap).Where("id = ?", o.Id))
+	if err != nil {
+		return
+	}
+
 	return
 }
 
@@ -348,6 +336,9 @@ func (s *opportunitiesSearchParams) scanFullColumns(r pgx.Rows, o *Opportunity) 
 		&o.OwnerName,
 		&o.AssigneeName,
 		&o.ClientName,
+		&o.OwnerProfileImgUrl,
+		&o.AssigneeProfileImgUrl,
+		&o.ClientLogoUrl,
 	)
 }
 
@@ -369,6 +360,9 @@ func (s *opportunitiesSearchParams) columns() []string {
 		"uo.name as owner_name",
 		"ua.name as assignee_name",
 		"c.name as client_name",
+		"uo.profile_img_url as owner_profile_img_url",
+		"ua.profile_img_url as assignee_profile_img_url",
+		"c.logo_url as client_logo_url",
 	}
 }
 
@@ -517,10 +511,9 @@ func OpportunityDetailHandler(c *fiber.Ctx) (err error) {
 
 	var s opportunitiesSearchParams
 	s.OpportunityID = opportunityID
-	s.Search = ""
 	s.Apply()
 
-	data, err := s.GetSingle(ctx)
+	o, err := s.GetSingle(ctx)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return errs.ErrNotExist().WithDetail(err)
@@ -528,7 +521,12 @@ func OpportunityDetailHandler(c *fiber.Ctx) (err error) {
 		return errs.ErrServerError().WithDetail(err)
 	}
 
-	return utils.FiberJSONWrap(c, data)
+	err = o.LoadOpportunityCategories(ctx)
+	if err != nil {
+		return errs.ErrServerError().WithDetail(err)
+	}
+
+	return utils.FiberJSONWrap(c, o)
 }
 
 func OpportunityEditHandlerHandler(c *fiber.Ctx) (err error) {
@@ -554,7 +552,6 @@ func OpportunityEditHandlerHandler(c *fiber.Ctx) (err error) {
 
 	var s opportunitiesSearchParams
 	s.OpportunityID = opportunityID
-	s.Search = ""
 	s.Apply()
 
 	data, err := s.GetSingle(ctx)
@@ -574,6 +571,27 @@ func OpportunityEditHandlerHandler(c *fiber.Ctx) (err error) {
 	err = o.UpdateToDB(ctx)
 	if err != nil {
 		return
+	}
+
+	for _, category := range o.Categories {
+		category.OpportunityId = o.Id
+		// can be create or update category
+		err = category.SyncToDB(ctx)
+		if err != nil {
+			return
+		}
+
+		for _, file := range category.Files {
+			file.OpportunityCategoryId = category.Id
+			file.CreatorId = u.Id
+			// create revision if only file id is empty
+			if file.Id.IsEmpty() {
+				err = file.CreateToDB(ctx)
+				if err != nil {
+					return
+				}
+			}
+		}
 	}
 
 	return utils.FiberJSONWrap(c, o)
