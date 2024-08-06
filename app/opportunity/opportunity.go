@@ -22,7 +22,7 @@ type Opportunity struct {
 	Id                              config.ObfuscatedInt   `json:"id" db:"id"`
 	OwnerId                         config.ObfuscatedInt   `json:"ownerId" db:"owner_id"`
 	AssigneeId                      config.ObfuscatedInt   `json:"assigneeId" db:"assignee_id"`
-	ClientId                        config.ObfuscatedInt   `json:"clientId" db:"client_id"`
+	ClientId                        *config.ObfuscatedInt  `json:"clientId" db:"client_id"`
 	StatusCode                      string                 `json:"statusCode" db:"status_code"`
 	Name                            string                 `json:"name" db:"name"`
 	Description                     *string                `json:"description,omitempty" db:"description"`
@@ -42,6 +42,20 @@ type Opportunity struct {
 }
 
 func (o *Opportunity) CreateToDB(ctx context.Context) error {
+
+	var talentBudget *float64
+	if o.TalentBudget != 0 {
+		talentBudget = &o.TalentBudget
+	}
+	var nonTalentBudget *float64
+	if o.NonTalentBudget != 0 {
+		nonTalentBudget = &o.TalentBudget
+	}
+	var revenue *float64
+	if o.Revenue != 0 {
+		revenue = &o.TalentBudget
+	}
+
 	insertMap := map[string]any{
 		"owner_id":          o.OwnerId,
 		"assignee_id":       o.AssigneeId,
@@ -49,9 +63,9 @@ func (o *Opportunity) CreateToDB(ctx context.Context) error {
 		"status_code":       o.StatusCode,
 		"name":              o.Name,
 		"description":       o.Description,
-		"talent_budget":     o.TalentBudget,
-		"non_talent_budget": o.NonTalentBudget,
-		"revenue":           o.Revenue,
+		"talent_budget":     talentBudget,
+		"non_talent_budget": nonTalentBudget,
+		"revenue":           revenue,
 	}
 
 	r, err := pgdb.QbQueryRow(ctx, pgdb.Qb.Insert("opportunities").SetMap(insertMap).Suffix("returning id"))
@@ -120,25 +134,15 @@ func (o *Opportunity) Validate(ctx context.Context) (err error) {
 		return errs.ErrBadParameter().WithMessage("name cannot be empty")
 	}
 
-	if o.TalentBudget < 1 {
-		return errs.ErrBadParameter().WithMessage("talent_budget must be larger than 0")
-	}
+	if o.ClientId != nil && !o.ClientId.IsEmpty() {
+		_, err = client.ClientById(ctx, *o.ClientId)
+		if err != nil {
+			if errors.Is(err, pgx.ErrNoRows) {
+				return errs.ErrNotExist().WithMessage("cannot find client_id")
+			}
 
-	if o.NonTalentBudget < 1 {
-		return errs.ErrBadParameter().WithMessage("non_talent_budget must be larger than 0")
-	}
-
-	if o.Revenue < 1 {
-		return errs.ErrBadParameter().WithMessage("revenue must be larger than 0")
-	}
-
-	_, err = client.ClientById(ctx, o.ClientId)
-	if err != nil {
-		if errors.Is(err, pgx.ErrNoRows) {
-			return errs.ErrNotExist().WithMessage("cannot find client_id")
+			return errs.ErrServerError().WithDetail(err)
 		}
-
-		return errs.ErrServerError().WithDetail(err)
 	}
 
 	_, err = status.StatusByCode(ctx, o.StatusCode)
@@ -193,7 +197,7 @@ func (o *Opportunity) LoadFromDB(ctx context.Context) (err error) {
 }
 
 // UpdateToDB can only edit name, description, non_talent_budget, talent_budget, revenue
-func (o *Opportunity) UpdateToDB(ctx context.Context) (err error) {
+func (o *Opportunity) UpdateToDB(ctx context.Context, updateMap map[string]any) (err error) {
 	if o.Id.IsEmpty() {
 		return errs.ErrBadParameter()
 	}
@@ -201,27 +205,6 @@ func (o *Opportunity) UpdateToDB(ctx context.Context) (err error) {
 	oldOpportunity := Opportunity{Id: o.Id}
 	err = oldOpportunity.LoadFromDB(ctx)
 	if err != nil {
-		return
-	}
-
-	updateMap := map[string]any{}
-	if o.Name != oldOpportunity.Name {
-		updateMap["name"] = o.Name
-	}
-	if *o.Description != *oldOpportunity.Description {
-		updateMap["description"] = o.Description
-	}
-	if o.NonTalentBudget != oldOpportunity.NonTalentBudget {
-		updateMap["non_talent_budget"] = o.NonTalentBudget
-	}
-	if o.TalentBudget != oldOpportunity.TalentBudget {
-		updateMap["talent_budget"] = o.TalentBudget
-	}
-	if o.Revenue != oldOpportunity.Revenue {
-		updateMap["revenue"] = o.Revenue
-	}
-
-	if len(updateMap) == 0 {
 		return
 	}
 
@@ -351,11 +334,11 @@ func (s *opportunitiesSearchParams) columns() []string {
 		"o.status_code",
 		"o.name",
 		"o.description",
-		"o.talent_budget",
-		"o.non_talent_budget",
-		"o.revenue",
-		"o.expected_profitability_percentage",
-		"o.expected_profitability_amount",
+		"COALESCE(o.talent_budget, 0)",
+		"COALESCE(o.non_talent_budget, 0)",
+		"COALESCE(o.revenue, 0)",
+		"COALESCE(o.expected_profitability_percentage, 0)",
+		"COALESCE(o.expected_profitability_amount, 0)",
 		"o.create_ts",
 		"uo.name as owner_name",
 		"ua.name as assignee_name",
@@ -568,7 +551,24 @@ func OpportunityEditHandlerHandler(c *fiber.Ctx) (err error) {
 
 	o.Id = opportunityID
 
-	err = o.UpdateToDB(ctx)
+	updateMap := map[string]any{}
+	if len(o.Name) > 0 {
+		updateMap["name"] = o.Name
+	}
+	if o.Description != nil && len(*o.Description) > 0 {
+		updateMap["description"] = o.Description
+	}
+	if o.NonTalentBudget != 0 {
+		updateMap["non_talent_budget"] = o.NonTalentBudget
+	}
+	if o.TalentBudget != 0 {
+		updateMap["talent_budget"] = o.TalentBudget
+	}
+	if o.Revenue != 0 {
+		updateMap["revenue"] = o.Revenue
+	}
+
+	err = o.UpdateToDB(ctx, updateMap)
 	if err != nil {
 		return
 	}
