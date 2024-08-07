@@ -42,24 +42,6 @@ type Opportunity struct {
 	ClientLogoUrl                   *string                `json:"clientLogoUrl" db:"client_logo_url"`
 }
 
-func OpportunityById(ctx context.Context, id config.ObfuscatedInt, cols ...string) (*Opportunity, error) {
-	if len(cols) == 0 {
-		cols = []string{"id"}
-	}
-
-	r, err := pgdb.QbQuery(ctx, pgdb.Qb.Select(cols...).From("opportunities").Where("id = ?", id))
-	if err != nil {
-		return nil, err
-	}
-
-	o := &Opportunity{}
-	err = pgxscan.ScanOne(o, r)
-	if err != nil {
-		return nil, err
-	}
-	return o, err
-}
-
 func (o *Opportunity) CreateToDB(ctx context.Context) error {
 
 	// var talentBudget *float64
@@ -223,6 +205,24 @@ func (o *Opportunity) UpdateToDB(ctx context.Context, updateMap map[string]any) 
 
 	_, err = pgdb.QbExec(ctx, pgdb.Qb.Update("opportunities").SetMap(updateMap).Where("id = ?", o.Id))
 	return
+}
+
+func OpportunityById(ctx context.Context, id config.ObfuscatedInt, cols ...string) (*Opportunity, error) {
+	if len(cols) == 0 {
+		cols = []string{"id"}
+	}
+
+	r, err := pgdb.QbQuery(ctx, pgdb.Qb.Select(cols...).From("opportunities").Where("id = ?", id))
+	if err != nil {
+		return nil, err
+	}
+
+	o := &Opportunity{}
+	err = pgxscan.ScanOne(o, r)
+	if err != nil {
+		return nil, err
+	}
+	return o, err
 }
 
 func CreateOpportunityHandler(c *fiber.Ctx) error {
