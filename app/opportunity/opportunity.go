@@ -74,11 +74,7 @@ func (o *Opportunity) CreateToDB(ctx context.Context) error {
 		return err
 	}
 
-	if err = r.Scan(&o.Id); err != nil {
-		return err
-	}
-
-	return nil
+	return r.Scan(&o.Id)
 }
 
 func (o *Opportunity) Validate(ctx context.Context) (err error) {
