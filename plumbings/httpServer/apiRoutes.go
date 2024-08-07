@@ -51,7 +51,17 @@ func apiRoutes(apiRouter fiber.Router) {
 			user.MustAuthMiddleware,
 			storage.UploadHandlerFactory(&storage.UploadConfig{
 				NonFormCallNext: true,
-				AllowedTypes:    []string{"image", "application"},
+				// jpeg, pdf, xlsx, docs, pptx
+				AllowedTypes: []string{
+					"image",
+					"application/pdf",
+					"application/msword",
+					"application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+					"application/vnd.ms-excel",
+					"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+					"application/vnd.ms-powerpoint",
+					"application/vnd.openxmlformats-officedocument.presentationml.presentation",
+				},
 				MaxSize:         100 * 1024 * 1024,
 				PathPrefix:      "opportunities",
 				PathIncludeHash: true,
