@@ -22,6 +22,7 @@ type OpportunityCategoryFile struct {
 	Version               int                  `json:"version" db:"version"`
 	CreatorId             config.ObfuscatedInt `json:"creatorId" db:"creator_id"`
 	CreateTs              time.Time            `json:"createTs" db:"create_ts"`
+	CreatorName           string               `json:"creatorName" db:"creator_name"`
 }
 
 func (ocf *OpportunityCategoryFile) CreateToDB(ctx context.Context) error {
@@ -52,6 +53,32 @@ func (ocf *OpportunityCategoryFile) CreateToDB(ctx context.Context) error {
 
 	if err = r.Scan(&ocf.Id, &ocf.CreateTs); err != nil {
 		return err
+	}
+
+	return nil
+}
+
+func (oc *OpportunityCategory) LoadOpportunityCategoriesFiles(ctx context.Context) (err error) {
+	const sql = `select 
+			ocl.id, ocl.opportunity_category_id, ocl.url, ocl.name, ocl.version, ocl.creator_id, ocl.create_ts, u.name as creator_name
+		from 
+			opportunity_category_files ocl left join users u on ocl.creator_id = u.id
+	 	where 
+			opportunity_category_id = $1 
+		order by 
+			ocl.version`
+	rows, err := pgdb.Query(ctx, sql, oc.Id)
+	if err != nil {
+		return
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var ocl OpportunityCategoryFile
+		err = rows.Scan(&ocl.Id, &ocl.OpportunityCategoryId, &ocl.URL, &ocl.Name, &ocl.Version, &ocl.CreatorId, &ocl.CreateTs, &ocl.CreatorName)
+		if err != nil {
+			return
+		}
+		oc.Files = append(oc.Files, &ocl)
 	}
 
 	return nil

@@ -52,14 +52,14 @@ func apiRoutes(apiRouter fiber.Router) {
 			storage.UploadHandlerFactory(&storage.UploadConfig{
 				NonFormCallNext: true,
 				AllowedTypes:    []string{"image", "application"},
-				MaxSize:         2 * 1024 * 1024,
+				MaxSize:         100 * 1024 * 1024,
 				PathPrefix:      "opportunities",
 				PathIncludeHash: true,
 			}),
 			opportunity.CreateOpportunityHandler)
 		opportunities.Get("", user.MustAuthMiddleware, opportunity.ListOpportunitiesHandler)
 		opportunities.Get("/:opportunityID", user.MustAuthMiddleware, opportunity.MustOpportunityIDMiddleware, opportunity.OpportunityDetailHandler)
-		opportunities.Put("/:opportunityID", user.MustAuthMiddleware, opportunity.MustOpportunityIDMiddleware, opportunity.OpportunityEditHandlerHandler)
+		opportunities.Patch("/:opportunityID", user.MustAuthMiddleware, opportunity.MustOpportunityIDMiddleware, opportunity.OpportunityEditHandlerHandler)
 		opportunities.Post("/:opportunityID/categories", user.MustAuthMiddleware, opportunity.MustOpportunityIDMiddleware, opportunity.CreateOpportunityCategoryHandler)
 		opportunities.Patch("/:opportunityID/categories/:opportunityCategoryID",
 			user.MustAuthMiddleware,

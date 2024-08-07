@@ -69,6 +69,32 @@ func (oc *OpportunityCategory) UpdateToDB(ctx context.Context, updateMap map[str
 	return
 }
 
+func (o *Opportunity) LoadOpportunityCategories(ctx context.Context) (err error) {
+	const sql = "SELECT id, opportunity_id, name, create_ts FROM opportunity_categories WHERE opportunity_id=$1 order by id"
+	rows, err := pgdb.Query(ctx, sql, o.Id)
+	if err != nil {
+		return
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var oc OpportunityCategory
+		err = rows.Scan(&oc.Id, &oc.OpportunityId, &oc.Name, &oc.CreateTs)
+		if err != nil {
+			return
+		}
+		o.Categories = append(o.Categories, &oc)
+	}
+
+	for _, category := range o.Categories {
+		err = category.LoadOpportunityCategoriesFiles(ctx)
+		if err != nil {
+			return
+		}
+	}
+
+	return nil
+}
+
 func CreateOpportunityCategoryHandler(c *fiber.Ctx) error {
 	oc := OpportunityCategory{}
 	err := c.BodyParser(&oc)
