@@ -78,54 +78,6 @@ func (o *Opportunity) CreateToDB(ctx context.Context) error {
 		return err
 	}
 
-	if len(o.Categories) > 0 {
-		qb := pgdb.Qb.Insert("opportunity_categories").Suffix("returning id, create_ts")
-		qb = qb.Columns("name", "opportunity_id")
-		for _, category := range o.Categories {
-			qb = qb.Values(category.Name, o.Id)
-		}
-		var r pgx.Rows
-		r, err = pgdb.QbQuery(ctx, qb)
-		if err != nil {
-			return err
-		}
-		defer r.Close()
-		for _, category := range o.Categories {
-			if r.Next() {
-				err = r.Scan(&category.Id, &category.CreateTs)
-				if err != nil {
-					return err
-				}
-			}
-		}
-
-		for _, category := range o.Categories {
-			if len(category.Files) > 0 {
-				qb = pgdb.Qb.Insert("opportunity_category_files").Suffix("returning id, create_ts")
-				qb = qb.Columns("opportunity_category_id", "url", "name", "version", "creator_id")
-				for index, file := range category.Files {
-					file.Version = index + 1
-					qb = qb.Values(category.Id, file.URL, file.Name, file.Version, o.AssigneeId)
-				}
-
-				r, err = pgdb.QbQuery(ctx, qb)
-				if err != nil {
-					return err
-				}
-
-				defer r.Close()
-				for _, files := range category.Files {
-					if r.Next() {
-						err = r.Scan(&files.Id, &files.CreateTs)
-						if err != nil {
-							return err
-						}
-					}
-				}
-			}
-		}
-	}
-
 	return nil
 }
 
