@@ -53,7 +53,8 @@ func apiRoutes(apiRouter fiber.Router) {
 				NonFormCallNext: true,
 				// jpeg, pdf, xlsx, docs, pptx
 				AllowedTypes: []string{
-					"image",
+					"image/jpeg",
+					"image/png",
 					"application/pdf",
 					"application/msword",
 					"application/vnd.openxmlformats-officedocument.wordprocessingml.document",
