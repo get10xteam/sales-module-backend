@@ -53,7 +53,7 @@ func UserOauthLoginMicrosoftHandler(c *fiber.Ctx) (err error) {
 	if err != nil {
 		return
 	}
-	u, err := UserByEmail(ctx, *o.Email, "id", "email", "emailconfirmed", "name", "profileimg_url")
+	u, err := UserByEmail(ctx, *o.Email, "id", "email", "email_confirmed", "name", "profile_img_url")
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			u = &User{
