@@ -3,6 +3,7 @@ package opportunity
 import (
 	"context"
 	"errors"
+	"fmt"
 	"time"
 
 	"github.com/Masterminds/squirrel"
@@ -209,11 +210,11 @@ type opportunitiesSearchParams struct {
 	OpportunityID      config.ObfuscatedInt
 	IncludeDescription bool                   `query:"includeDescription"`
 	AssigneeIds        []config.ObfuscatedInt `query:"assigneeIds"`
-	AssigneeId         config.ObfuscatedInt   // TODO add logic with AssigneeId
-	AssigneeIdRecurse  bool                   // TODO add logic with AssigneeIdRecurse
+	AssigneeId         config.ObfuscatedInt   `query:"assigneeId"`
+	AssigneeIdRecurse  bool                   `query:"assigneeIdRecurse"`
 	OwnerIds           []config.ObfuscatedInt `query:"ownerIds"`
-	OwnerId            config.ObfuscatedInt   // TODO add logic with OwnerId
-	OwnerIdRecurse     bool                   // TODO add logic with OwnerIdRecurse
+	OwnerId            config.ObfuscatedInt   `query:"ownerId"`
+	OwnerIdRecurse     bool                   `query:"ownerIdRecurse"`
 	StatusCodes        []string               `query:"statusCodes"`
 	ClientIds          []config.ObfuscatedInt `query:"clientIds"`
 }
@@ -255,6 +256,46 @@ func (s *opportunitiesSearchParams) Apply() {
 
 	if len(s.ClientIds) > 0 {
 		s.q = s.q.Where(squirrel.Eq{"c.id": s.ClientIds})
+	}
+
+	if s.AssigneeIdRecurse && !s.AssigneeId.IsEmpty() {
+		s.q = s.q.Where(`o.assignee_id IN (
+		WITH RECURSIVE new_users AS (
+			SELECT 
+				u.id
+			FROM 
+				users u 
+			WHERE 
+				u.id = ?
+			UNION 
+			SELECT 
+				us.id
+			FROM 
+				users us 
+			INNER JOIN new_users so ON so.id = us.parent_id
+				) 
+			SELECT * FROM new_users as nu
+		)`, s.AssigneeId)
+	}
+
+	if s.OwnerIdRecurse && !s.OwnerId.IsEmpty() {
+		s.q = s.q.Where(`o.owner_id IN (
+		WITH RECURSIVE new_users AS (
+			SELECT 
+				u.id
+			FROM 
+				users u 
+			WHERE 
+				u.id = ?
+			UNION 
+			SELECT 
+				us.id
+			FROM 
+				users us 
+			INNER JOIN new_users so ON so.id = us.parent_id
+				) 
+			SELECT * FROM new_users as nu
+		)`, s.OwnerId)
 	}
 }
 
@@ -335,6 +376,9 @@ func (s *opportunitiesSearchParams) GetData(ctx context.Context) ([]*Opportunity
 
 	q := s.q.Columns(s.columns()...).OrderBy(orderBy).Offset(offset).Limit(s.PageSize)
 
+	qStr, _, _ := q.ToSql()
+	fmt.Println(qStr)
+
 	r, err := pgdb.QbQuery(ctx, q)
 	if err != nil {
 		return nil, err
@@ -397,6 +441,15 @@ func ListOpportunitiesHandler(c *fiber.Ctx) (err error) {
 	err = c.QueryParser(&s)
 	if err != nil {
 		return errs.ErrBadParameter().WithDetail(err)
+	}
+
+	u := user.UserFromHttp(c)
+	if s.AssigneeIdRecurse {
+		s.AssigneeId = u.Id
+	}
+
+	if s.OwnerIdRecurse {
+		s.OwnerId = u.Id
 	}
 
 	s.Apply()
