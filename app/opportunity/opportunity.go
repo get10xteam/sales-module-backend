@@ -44,15 +44,14 @@ type Opportunity struct {
 
 func (o *Opportunity) CreateToDB(ctx context.Context) error {
 
-	// var talentBudget *float64
 	if o.TalentBudget != nil && *o.TalentBudget == 0 {
 		o.TalentBudget = nil
 	}
-	// // var nonTalentBudget *float64
+
 	if o.NonTalentBudget != nil && *o.NonTalentBudget == 0 {
 		o.NonTalentBudget = nil
 	}
-	// // var revenue *float64
+
 	if o.Revenue != nil && *o.Revenue == 0 {
 		o.Revenue = nil
 	}
