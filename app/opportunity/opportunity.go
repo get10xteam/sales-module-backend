@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/Masterminds/squirrel"
+	"github.com/georgysavva/scany/v2/pgxscan"
 	"github.com/get10xteam/sales-module-backend/app/client"
 	"github.com/get10xteam/sales-module-backend/app/status"
 	"github.com/get10xteam/sales-module-backend/app/user"
@@ -20,35 +21,52 @@ import (
 )
 
 type Opportunity struct {
-	Id                              config.ObfuscatedInt `json:"id" db:"id"`
-	OwnerId                         config.ObfuscatedInt `json:"ownerId" db:"owner_id"`
-	AssigneeId                      config.ObfuscatedInt `json:"assigneeId" db:"assignee_id"`
-	ClientId                        config.ObfuscatedInt `json:"clientId" db:"client_id"`
-	StatusCode                      string               `json:"statusCode" db:"status_code"`
-	Name                            string               `json:"name" db:"name"`
-	Description                     *string              `json:"description,omitempty" db:"description"`
-	TalentBudget                    float64              `json:"talentBudget" db:"talent_budget"`
-	NonTalentBudget                 float64              `json:"nonTalentBudget" db:"non_talent_budget"`
-	Revenue                         float64              `json:"revenue" db:"revenue"`
-	ExpectedProfitabilityPercentage float64              `json:"expectedProfitabilityPercentage" db:"expected_profitability_percentage"`
-	ExpectedProfitabilityAmount     float64              `json:"expectedProfitabilityAmount" db:"expected_profitability_amount"`
-	CreateTs                        time.Time            `json:"createTs" db:"create_ts"`
-	OwnerName                       string               `json:"ownerName,omitempty" db:"owner_name"`
-	AssigneeName                    string               `json:"assigneeName,omitempty" db:"assignee_name"`
-	ClientName                      string               `json:"clientName,omitempty" db:"client_name"`
+	Id                              config.ObfuscatedInt   `json:"id" db:"id"`
+	OwnerId                         config.ObfuscatedInt   `json:"ownerId" db:"owner_id"`
+	AssigneeId                      config.ObfuscatedInt   `json:"assigneeId" db:"assignee_id"`
+	ClientId                        *config.ObfuscatedInt  `json:"clientId" db:"client_id"`
+	StatusCode                      string                 `json:"statusCode" db:"status_code"`
+	Name                            string                 `json:"name" db:"name"`
+	Description                     *string                `json:"description,omitempty" db:"description"`
+	TalentBudget                    *float64               `json:"talentBudget" db:"talent_budget"`
+	NonTalentBudget                 *float64               `json:"nonTalentBudget" db:"non_talent_budget"`
+	Revenue                         *float64               `json:"revenue" db:"revenue"`
+	ExpectedProfitabilityPercentage *float64               `json:"expectedProfitabilityPercentage" db:"expected_profitability_percentage"`
+	ExpectedProfitabilityAmount     *float64               `json:"expectedProfitabilityAmount" db:"expected_profitability_amount"`
+	CreateTs                        time.Time              `json:"createTs" db:"create_ts"`
+	OwnerName                       string                 `json:"ownerName,omitempty" db:"owner_name"`
+	AssigneeName                    string                 `json:"assigneeName,omitempty" db:"assignee_name"`
+	ClientName                      *string                `json:"clientName" db:"client_name"`
+	Categories                      []*OpportunityCategory `json:"categories,omitempty"`
+	OwnerProfileImgUrl              *string                `json:"ownerProfileImgUrl" db:"owner_profile_img_url"`
+	AssigneeProfileImgUrl           *string                `json:"assigneeProfileImgUrl" db:"assignee_profile_img_url"`
+	ClientLogoUrl                   *string                `json:"clientLogoUrl" db:"client_logo_url"`
 }
 
-func (u *Opportunity) CreateToDB(ctx context.Context) error {
+func (o *Opportunity) CreateToDB(ctx context.Context) error {
+
+	if o.TalentBudget != nil && *o.TalentBudget == 0 {
+		o.TalentBudget = nil
+	}
+
+	if o.NonTalentBudget != nil && *o.NonTalentBudget == 0 {
+		o.NonTalentBudget = nil
+	}
+
+	if o.Revenue != nil && *o.Revenue == 0 {
+		o.Revenue = nil
+	}
+
 	insertMap := map[string]any{
-		"owner_id":          u.OwnerId,
-		"assignee_id":       u.AssigneeId,
-		"client_id":         u.ClientId,
-		"status_code":       u.StatusCode,
-		"name":              u.Name,
-		"description":       u.Description,
-		"talent_budget":     u.TalentBudget,
-		"non_talent_budget": u.NonTalentBudget,
-		"revenue":           u.Revenue,
+		"owner_id":          o.OwnerId,
+		"assignee_id":       o.AssigneeId,
+		"client_id":         o.ClientId,
+		"status_code":       o.StatusCode,
+		"name":              o.Name,
+		"description":       o.Description,
+		"talent_budget":     o.TalentBudget,
+		"non_talent_budget": o.NonTalentBudget,
+		"revenue":           o.Revenue,
 	}
 
 	r, err := pgdb.QbQueryRow(ctx, pgdb.Qb.Insert("opportunities").SetMap(insertMap).Suffix("returning id"))
@@ -56,7 +74,7 @@ func (u *Opportunity) CreateToDB(ctx context.Context) error {
 		return err
 	}
 
-	return r.Scan(&u.Id)
+	return r.Scan(&o.Id)
 }
 
 func (o *Opportunity) Validate(ctx context.Context) (err error) {
@@ -65,25 +83,15 @@ func (o *Opportunity) Validate(ctx context.Context) (err error) {
 		return errs.ErrBadParameter().WithMessage("name cannot be empty")
 	}
 
-	if o.TalentBudget < 1 {
-		return errs.ErrBadParameter().WithMessage("talent_budget must be larger than 0")
-	}
+	if o.ClientId != nil && !o.ClientId.IsEmpty() {
+		_, err = client.ClientById(ctx, *o.ClientId)
+		if err != nil {
+			if errors.Is(err, pgx.ErrNoRows) {
+				return errs.ErrNotExist().WithMessage("cannot find client_id")
+			}
 
-	if o.NonTalentBudget < 1 {
-		return errs.ErrBadParameter().WithMessage("non_talent_budget must be larger than 0")
-	}
-
-	if o.Revenue < 1 {
-		return errs.ErrBadParameter().WithMessage("revenue must be larger than 0")
-	}
-
-	_, err = client.ClientById(ctx, o.ClientId)
-	if err != nil {
-		if errors.Is(err, pgx.ErrNoRows) {
-			return errs.ErrNotExist().WithMessage("cannot find client_id")
+			return errs.ErrServerError().WithDetail(err)
 		}
-
-		return errs.ErrServerError().WithDetail(err)
 	}
 
 	_, err = status.StatusByCode(ctx, o.StatusCode)
@@ -138,40 +146,31 @@ func (o *Opportunity) LoadFromDB(ctx context.Context) (err error) {
 }
 
 // UpdateToDB can only edit name, description, non_talent_budget, talent_budget, revenue
-func (o *Opportunity) UpdateToDB(ctx context.Context) (err error) {
+func (o *Opportunity) UpdateToDB(ctx context.Context, updateMap map[string]any) (err error) {
 	if o.Id.IsEmpty() {
 		return errs.ErrBadParameter()
 	}
 
-	oldOpportunity := Opportunity{Id: o.Id}
-	err = oldOpportunity.LoadFromDB(ctx)
-	if err != nil {
-		return
-	}
-
-	updateMap := map[string]any{}
-	if o.Name != oldOpportunity.Name {
-		updateMap["name"] = o.Name
-	}
-	if *o.Description != *oldOpportunity.Description {
-		updateMap["description"] = o.Description
-	}
-	if o.NonTalentBudget != oldOpportunity.NonTalentBudget {
-		updateMap["non_talent_budget"] = o.NonTalentBudget
-	}
-	if o.TalentBudget != oldOpportunity.TalentBudget {
-		updateMap["talent_budget"] = o.TalentBudget
-	}
-	if o.Revenue != oldOpportunity.Revenue {
-		updateMap["revenue"] = o.Revenue
-	}
-
-	if len(updateMap) == 0 {
-		return
-	}
-
 	_, err = pgdb.QbExec(ctx, pgdb.Qb.Update("opportunities").SetMap(updateMap).Where("id = ?", o.Id))
 	return
+}
+
+func OpportunityById(ctx context.Context, id config.ObfuscatedInt, cols ...string) (*Opportunity, error) {
+	if len(cols) == 0 {
+		cols = []string{"id"}
+	}
+
+	r, err := pgdb.QbQuery(ctx, pgdb.Qb.Select(cols...).From("opportunities").Where("id = ?", id))
+	if err != nil {
+		return nil, err
+	}
+
+	o := &Opportunity{}
+	err = pgxscan.ScanOne(o, r)
+	if err != nil {
+		return nil, err
+	}
+	return o, err
 }
 
 func CreateOpportunityHandler(c *fiber.Ctx) error {
@@ -317,6 +316,9 @@ func (s *opportunitiesSearchParams) scanFullColumns(r pgx.Rows, o *Opportunity) 
 		&o.OwnerName,
 		&o.AssigneeName,
 		&o.ClientName,
+		&o.OwnerProfileImgUrl,
+		&o.AssigneeProfileImgUrl,
+		&o.ClientLogoUrl,
 	)
 }
 
@@ -329,15 +331,18 @@ func (s *opportunitiesSearchParams) columns() []string {
 		"o.status_code",
 		"o.name",
 		"o.description",
-		"o.talent_budget",
-		"o.non_talent_budget",
-		"o.revenue",
-		"o.expected_profitability_percentage",
-		"o.expected_profitability_amount",
+		"COALESCE(o.talent_budget, 0)",
+		"COALESCE(o.non_talent_budget, 0)",
+		"COALESCE(o.revenue, 0)",
+		"COALESCE(o.expected_profitability_percentage, 0)",
+		"COALESCE(o.expected_profitability_amount, 0)",
 		"o.create_ts",
 		"uo.name as owner_name",
 		"ua.name as assignee_name",
 		"c.name as client_name",
+		"uo.profile_img_url as owner_profile_img_url",
+		"ua.profile_img_url as assignee_profile_img_url",
+		"c.logo_url as client_logo_url",
 	}
 }
 
@@ -498,10 +503,9 @@ func OpportunityDetailHandler(c *fiber.Ctx) (err error) {
 
 	var s opportunitiesSearchParams
 	s.OpportunityID = opportunityID
-	s.Search = ""
 	s.Apply()
 
-	data, err := s.GetSingle(ctx)
+	o, err := s.GetSingle(ctx)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return errs.ErrNotExist().WithDetail(err)
@@ -509,7 +513,12 @@ func OpportunityDetailHandler(c *fiber.Ctx) (err error) {
 		return errs.ErrServerError().WithDetail(err)
 	}
 
-	return utils.FiberJSONWrap(c, data)
+	err = o.LoadOpportunityCategories(ctx)
+	if err != nil {
+		return errs.ErrServerError().WithDetail(err)
+	}
+
+	return utils.FiberJSONWrap(c, o)
 }
 
 func OpportunityEditHandlerHandler(c *fiber.Ctx) (err error) {
@@ -526,16 +535,10 @@ func OpportunityEditHandlerHandler(c *fiber.Ctx) (err error) {
 		return errs.ErrBadParameter().WithMessage("Body not valid")
 	}
 
-	err = o.Validate(ctx)
-	if err != nil {
-		return
-	}
-
 	u := user.UserFromHttp(c)
 
 	var s opportunitiesSearchParams
 	s.OpportunityID = opportunityID
-	s.Search = ""
 	s.Apply()
 
 	data, err := s.GetSingle(ctx)
@@ -552,7 +555,36 @@ func OpportunityEditHandlerHandler(c *fiber.Ctx) (err error) {
 
 	o.Id = opportunityID
 
-	err = o.UpdateToDB(ctx)
+	updateMap := map[string]any{}
+	if len(o.Name) > 0 {
+		updateMap["name"] = o.Name
+	}
+	if o.Description != nil && len(*o.Description) > 0 {
+		updateMap["description"] = o.Description
+	}
+	if o.NonTalentBudget != nil {
+		if *o.NonTalentBudget == 0 {
+			updateMap["non_talent_budget"] = nil
+		} else {
+			updateMap["non_talent_budget"] = o.NonTalentBudget
+		}
+	}
+	if o.TalentBudget != nil {
+		if *o.TalentBudget == 0 {
+			updateMap["talent_budget"] = nil
+		} else {
+			updateMap["talent_budget"] = o.TalentBudget
+		}
+	}
+	if o.Revenue != nil {
+		if *o.Revenue == 0 {
+			updateMap["revenue"] = nil
+		} else {
+			updateMap["revenue"] = o.Revenue
+		}
+	}
+
+	err = o.UpdateToDB(ctx, updateMap)
 	if err != nil {
 		return
 	}

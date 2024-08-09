@@ -3,7 +3,6 @@ package user
 import (
 	"context"
 	"errors"
-	"fmt"
 	"net"
 	"time"
 
@@ -184,7 +183,6 @@ func UserLoginHandler(c *fiber.Ctx) (err error) {
 	}
 	err = c.BodyParser(&f)
 	if err != nil {
-		fmt.Println(err)
 		return errs.ErrBadParameter().WithMessage("Body not valid")
 	}
 	if f.Email == "" || f.Password == "" {
