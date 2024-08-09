@@ -3,7 +3,6 @@ package opportunity
 import (
 	"context"
 	"errors"
-	"fmt"
 	"time"
 
 	"github.com/Masterminds/squirrel"
@@ -380,9 +379,6 @@ func (s *opportunitiesSearchParams) GetData(ctx context.Context) ([]*Opportunity
 	}
 
 	q := s.q.Columns(s.columns()...).OrderBy(orderBy).Offset(offset).Limit(s.PageSize)
-
-	qStr, _, _ := q.ToSql()
-	fmt.Println(qStr)
 
 	r, err := pgdb.QbQuery(ctx, q)
 	if err != nil {
